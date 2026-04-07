@@ -35,11 +35,13 @@ const sliderThreshold = document.getElementById("opt-threshold") as HTMLInputEle
 const thresholdLabel = document.getElementById("opt-threshold-value") as HTMLElement;
 const inputOcrKey = document.getElementById("opt-ocr-key") as HTMLInputElement;
 const inputAiKey = document.getElementById("opt-ai-key") as HTMLInputElement;
+const inputImport = document.getElementById("opt-import") as HTMLInputElement;
+const btnOptExport = document.getElementById("opt-export") as HTMLButtonElement;
 const btnOptOk = document.getElementById("opt-ok") as HTMLButtonElement;
 const btnOptCancel = document.getElementById("opt-cancel") as HTMLButtonElement;
 
 /* ??? Add modal refs ??? */
-const inputProduct = document.getElementById("add-product") as HTMLInputElement;
+const inputProduct = document.getElementById("add-product") as HTMLTextAreaElement;
 const inputPrice = document.getElementById("add-price") as HTMLInputElement;
 const btnAddOk = document.getElementById("add-ok") as HTMLButtonElement;
 const btnAddCancel = document.getElementById("add-cancel") as HTMLButtonElement;
@@ -73,6 +75,124 @@ function populateOptions(): void {
   sliderThreshold.value = String(cfg.couponAlertThreshold);
   updateThresholdLabel(cfg.couponAlertThreshold);
 }
+
+/* ??? Simple YAML parser ??? */
+function parseSimpleYaml(text: string): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  let currentMap: Record<string, string> | null = null;
+  let currentKey = "";
+
+  for (const raw of text.split(/\r?\n/)) {
+    if (raw.trim() === "" || raw.trim().startsWith("#")) continue;
+
+    const nested = raw.match(/^(\s{2,})([\w]+):\s*(.+)$/);
+    if (nested && currentMap) {
+      currentMap[nested[2]] = nested[3].replace(/^["']|["']$/g, "");
+      continue;
+    }
+
+    if (currentMap) {
+      result[currentKey] = currentMap;
+      currentMap = null;
+    }
+
+    const match = raw.match(/^([\w]+):\s*(.*)$/);
+    if (!match) continue;
+
+    const key = match[1];
+    const val = match[2].trim();
+
+    if (val === "") {
+      currentMap = {};
+      currentKey = key;
+    } else {
+      result[key] = val.replace(/^["']|["']$/g, "");
+    }
+  }
+  if (currentMap) result[currentKey] = currentMap;
+  return result;
+}
+
+function applyYamlToModal(data: Record<string, unknown>): void {
+  if (typeof data.aiProvider === "string" && Object.values(AiProvider).includes(data.aiProvider as AiProvider)) {
+    selAi.value = data.aiProvider as string;
+    inputAiKey.value = config.current.aiApiKeys[data.aiProvider as string] ?? "";
+  }
+  if (typeof data.ocrProvider === "string" && Object.values(OcrProvider).includes(data.ocrProvider as OcrProvider)) {
+    selOcr.value = data.ocrProvider as string;
+    inputOcrKey.value = config.current.ocrApiKeys[data.ocrProvider as string] ?? "";
+  }
+  if (typeof data.currency === "string" && Object.values(CurrencyCode).includes(data.currency as CurrencyCode)) {
+    selCurrency.value = data.currency as string;
+  }
+  if (typeof data.useCoupons === "string") {
+    chkCoupons.checked = data.useCoupons === "true";
+  }
+  if (typeof data.couponValue === "string") {
+    const v = parseFloat(data.couponValue);
+    if (!isNaN(v)) inputCouponVal.value = v.toFixed(2);
+  }
+  if (typeof data.couponAlertThreshold === "string") {
+    const v = parseFloat(data.couponAlertThreshold);
+    if (!isNaN(v) && v >= 0.05 && v <= 0.30) {
+      sliderThreshold.value = String(v);
+      updateThresholdLabel(v);
+    }
+  }
+  if (typeof data.ocrApiKeys === "object" && data.ocrApiKeys !== null) {
+    const keys = data.ocrApiKeys as Record<string, string>;
+    const provider = selOcr.value;
+    if (keys[provider]) inputOcrKey.value = keys[provider];
+  }
+  if (typeof data.aiApiKeys === "object" && data.aiApiKeys !== null) {
+    const keys = data.aiApiKeys as Record<string, string>;
+    const provider = selAi.value;
+    if (keys[provider]) inputAiKey.value = keys[provider];
+  }
+}
+
+inputImport.addEventListener("change", () => {
+  const file = inputImport.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = parseSimpleYaml(reader.result as string);
+      applyYamlToModal(data);
+    } catch { /* ignore malformed files */ }
+    inputImport.value = "";
+  };
+  reader.readAsText(file);
+});
+
+btnOptExport.addEventListener("click", () => {
+  const cfg = config.current;
+  const ocrKeys = Object.entries(cfg.ocrApiKeys)
+    .map(([k, v]) => `  ${k}: "${v}"`).join("\n");
+  const aiKeys = Object.entries(cfg.aiApiKeys)
+    .map(([k, v]) => `  ${k}: "${v}"`).join("\n");
+
+  const yml = [
+    `currency: ${cfg.currency}`,
+    `aiProvider: ${cfg.aiProvider}`,
+    `ocrProvider: ${cfg.ocrProvider}`,
+    `useCoupons: ${cfg.useCoupons}`,
+    `couponValue: ${cfg.couponValue.toFixed(2)}`,
+    `couponAlertThreshold: ${cfg.couponAlertThreshold}`,
+    `ocrApiKeys:`,
+    ocrKeys,
+    `aiApiKeys:`,
+    aiKeys,
+  ].join("\n") + "\n";
+
+  const blob = new Blob([yml], { type: "text/yaml" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "config.yml";
+  a.click();
+  URL.revokeObjectURL(url);
+});
 
 selAi.addEventListener("change", () => {
   inputAiKey.value = config.current.aiApiKeys[selAi.value] ?? "";
@@ -163,9 +283,15 @@ async function callAiWithFallback(ocrText: string): Promise<PriceResult> {
   } catch (primaryErr) {
     const fallbackKey = config.current.aiApiKeys[fallback] ?? "";
     if (!fallbackKey) throw primaryErr;
-    return fallback === AiProvider.Groq
-      ? await parseWithGroq(ocrText, fallbackKey)
-      : await parseWithGemini(ocrText, fallbackKey);
+    try {
+      return fallback === AiProvider.Groq
+        ? await parseWithGroq(ocrText, fallbackKey)
+        : await parseWithGemini(ocrText, fallbackKey);
+    } catch (fallbackErr) {
+      const pMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+      const fMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+      throw new Error(`${primary} failed: ${pMsg} | ${fallback} fallback failed: ${fMsg}`);
+    }
   }
 }
 
@@ -245,7 +371,7 @@ btnAdd.addEventListener("click", () => {
 });
 
 btnAddOk.addEventListener("click", () => {
-  const product = inputProduct.value.trim();
+  const product = inputProduct.value.replace(/\n/g, " ").trim();
   const priceText = inputPrice.value.trim().replace(",", ".");
   if (!product || !priceText) return;
 
