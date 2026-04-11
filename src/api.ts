@@ -8,6 +8,7 @@ const PROMPT =
   "Analyze the following text extracted via OCR from a price tag or receipt. " +
   "Identify all prices (as numbers) and the associated product name. " +
   'If the product name is not recognizable, use "UNKNOWN" as placeholder. ' +
+  "Ignore any text reporting 'price per weight' values. " +
   "Respond ONLY with a valid JSON object in this exact format, no markdown, no explanation:\n" +
   '{"items":[{"product":"product name","price":0.00}]}\n\n' +
   "OCR text:\n";

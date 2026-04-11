@@ -1,190 +1,55 @@
 import "./style.css";
 import { CameraService } from "./camera";
-import { config, CURRENCIES } from "./config";
+import { config } from "./config";
 import { listManager } from "./listManager";
 import { recognizeOcr, parseWithGemini, parseWithGroq } from "./api";
 import { Modal } from "./modal";
 import { createPriceItem, generateId, AiProvider, OcrProvider, CurrencyCode } from "./models";
 import type { PriceItem, PriceResult } from "./models";
+import { uiRefs, populateSelect, updateThresholdLabel, addResultItem } from "./ui";
+import { parseSimpleYaml, applyYamlToModal, exportConfigYaml } from "./yamlConfig";
 
-/* ??? DOM refs ??? */
-const video = document.getElementById("preview") as HTMLVideoElement;
-const maskTop = document.getElementById("camera-mask-top") as HTMLElement;
-const maskBottom = document.getElementById("camera-mask") as HTMLElement;
-const spinner = document.getElementById("spinner") as HTMLElement;
 
-const alertEl = document.getElementById("coupon-alert") as HTMLElement;
-const couponSection = document.getElementById("coupon-section") as HTMLElement;
-const couponValue = document.getElementById("coupon-value") as HTMLElement;
-const totalValue = document.getElementById("total-value") as HTMLElement;
-
-const resultList = document.getElementById("result-list") as HTMLElement;
-const cropSlider = document.getElementById("crop-slider") as HTMLInputElement;
-
-const btnOptions = document.getElementById("btn-options") as HTMLButtonElement;
-const btnAdd = document.getElementById("btn-add") as HTMLButtonElement;
-const btnScan = document.getElementById("btn-scan") as HTMLButtonElement;
-
-/* ??? Options modal refs ??? */
-const selAi = document.getElementById("opt-ai") as HTMLSelectElement;
-const selOcr = document.getElementById("opt-ocr") as HTMLSelectElement;
-const selCurrency = document.getElementById("opt-currency") as HTMLSelectElement;
-const chkCoupons = document.getElementById("opt-use-coupons") as HTMLInputElement;
-const inputCouponVal = document.getElementById("opt-coupon-value") as HTMLInputElement;
-const sliderThreshold = document.getElementById("opt-threshold") as HTMLInputElement;
-const thresholdLabel = document.getElementById("opt-threshold-value") as HTMLElement;
-const inputOcrKey = document.getElementById("opt-ocr-key") as HTMLInputElement;
-const inputAiKey = document.getElementById("opt-ai-key") as HTMLInputElement;
-const inputImport = document.getElementById("opt-import") as HTMLInputElement;
-const btnOptExport = document.getElementById("opt-export") as HTMLButtonElement;
-const btnOptOk = document.getElementById("opt-ok") as HTMLButtonElement;
-const btnOptCancel = document.getElementById("opt-cancel") as HTMLButtonElement;
-
-/* ??? Add modal refs ??? */
-const inputProduct = document.getElementById("add-product") as HTMLTextAreaElement;
-const inputPrice = document.getElementById("add-price") as HTMLInputElement;
-const btnAddOk = document.getElementById("add-ok") as HTMLButtonElement;
-const btnAddCancel = document.getElementById("add-cancel") as HTMLButtonElement;
 
 /* ??? Services ??? */
-const camera = new CameraService(video);
+const camera = new CameraService(uiRefs.video);
 const optionsModal = new Modal("options-panel", "options-overlay");
 const addModal = new Modal("add-panel", "add-overlay");
 
 /* ??? Populate dropdowns ??? */
-function populateSelect(sel: HTMLSelectElement, values: string[], selected: string): void {
-  sel.innerHTML = "";
-  values.forEach((v) => {
-    const opt = document.createElement("option");
-    opt.value = v;
-    opt.textContent = v;
-    if (v === selected) opt.selected = true;
-    sel.appendChild(opt);
-  });
-}
 
 function populateOptions(): void {
   const cfg = config.current;
-  populateSelect(selAi, Object.values(AiProvider), cfg.aiProvider);
-  populateSelect(selOcr, Object.values(OcrProvider), cfg.ocrProvider);
-  populateSelect(selCurrency, Object.values(CurrencyCode), cfg.currency);
-  inputOcrKey.value = cfg.ocrApiKeys[cfg.ocrProvider] ?? "";
-  inputAiKey.value = cfg.aiApiKeys[cfg.aiProvider] ?? "";
-  chkCoupons.checked = cfg.useCoupons;
-  inputCouponVal.value = cfg.couponValue.toFixed(2);
-  sliderThreshold.value = String(cfg.couponAlertThreshold);
-  updateThresholdLabel(cfg.couponAlertThreshold);
+  populateSelect(uiRefs.selAi, Object.values(AiProvider), cfg.aiProvider);
+  populateSelect(uiRefs.selOcr, Object.values(OcrProvider), cfg.ocrProvider);
+  populateSelect(uiRefs.selCurrency, Object.values(CurrencyCode), cfg.currency);
+  uiRefs.inputOcrKey.value = cfg.ocrApiKeys[cfg.ocrProvider] ?? "";
+  uiRefs.inputAiKey.value = cfg.aiApiKeys[cfg.aiProvider] ?? "";
+  uiRefs.chkCoupons.checked = cfg.useCoupons;
+  uiRefs.inputCouponVal.value = cfg.couponValue.toFixed(2);
+  uiRefs.sliderThreshold.value = String(cfg.couponAlertThreshold);
+  updateThresholdLabel(cfg.couponAlertThreshold, uiRefs.thresholdLabel);
 }
 
-/* ??? Simple YAML parser ??? */
-function parseSimpleYaml(text: string): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  let currentMap: Record<string, string> | null = null;
-  let currentKey = "";
 
-  for (const raw of text.split(/\r?\n/)) {
-    if (raw.trim() === "" || raw.trim().startsWith("#")) continue;
 
-    const nested = raw.match(/^(\s{2,})([\w]+):\s*(.+)$/);
-    if (nested && currentMap) {
-      currentMap[nested[2]] = nested[3].replace(/^["']|["']$/g, "");
-      continue;
-    }
 
-    if (currentMap) {
-      result[currentKey] = currentMap;
-      currentMap = null;
-    }
-
-    const match = raw.match(/^([\w]+):\s*(.*)$/);
-    if (!match) continue;
-
-    const key = match[1];
-    const val = match[2].trim();
-
-    if (val === "") {
-      currentMap = {};
-      currentKey = key;
-    } else {
-      result[key] = val.replace(/^["']|["']$/g, "");
-    }
-  }
-  if (currentMap) result[currentKey] = currentMap;
-  return result;
-}
-
-function applyYamlToModal(data: Record<string, unknown>): void {
-  if (typeof data.aiProvider === "string" && Object.values(AiProvider).includes(data.aiProvider as AiProvider)) {
-    selAi.value = data.aiProvider as string;
-    inputAiKey.value = config.current.aiApiKeys[data.aiProvider as string] ?? "";
-  }
-  if (typeof data.ocrProvider === "string" && Object.values(OcrProvider).includes(data.ocrProvider as OcrProvider)) {
-    selOcr.value = data.ocrProvider as string;
-    inputOcrKey.value = config.current.ocrApiKeys[data.ocrProvider as string] ?? "";
-  }
-  if (typeof data.currency === "string" && Object.values(CurrencyCode).includes(data.currency as CurrencyCode)) {
-    selCurrency.value = data.currency as string;
-  }
-  if (typeof data.useCoupons === "string") {
-    chkCoupons.checked = data.useCoupons === "true";
-  }
-  if (typeof data.couponValue === "string") {
-    const v = parseFloat(data.couponValue);
-    if (!isNaN(v)) inputCouponVal.value = v.toFixed(2);
-  }
-  if (typeof data.couponAlertThreshold === "string") {
-    const v = parseFloat(data.couponAlertThreshold);
-    if (!isNaN(v) && v >= 0.05 && v <= 0.30) {
-      sliderThreshold.value = String(v);
-      updateThresholdLabel(v);
-    }
-  }
-  if (typeof data.ocrApiKeys === "object" && data.ocrApiKeys !== null) {
-    const keys = data.ocrApiKeys as Record<string, string>;
-    const provider = selOcr.value;
-    if (keys[provider]) inputOcrKey.value = keys[provider];
-  }
-  if (typeof data.aiApiKeys === "object" && data.aiApiKeys !== null) {
-    const keys = data.aiApiKeys as Record<string, string>;
-    const provider = selAi.value;
-    if (keys[provider]) inputAiKey.value = keys[provider];
-  }
-}
-
-inputImport.addEventListener("change", () => {
-  const file = inputImport.files?.[0];
+uiRefs.inputImport.addEventListener("change", () => {
+  const file = uiRefs.inputImport.files?.[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
     try {
       const data = parseSimpleYaml(reader.result as string);
-      applyYamlToModal(data);
+      applyYamlToModal(data, uiRefs);
     } catch { /* ignore malformed files */ }
-    inputImport.value = "";
+    uiRefs.inputImport.value = "";
   };
   reader.readAsText(file);
 });
 
-btnOptExport.addEventListener("click", () => {
-  const cfg = config.current;
-  const ocrKeys = Object.entries(cfg.ocrApiKeys)
-    .map(([k, v]) => `  ${k}: "${v}"`).join("\n");
-  const aiKeys = Object.entries(cfg.aiApiKeys)
-    .map(([k, v]) => `  ${k}: "${v}"`).join("\n");
-
-  const yml = [
-    `currency: ${cfg.currency}`,
-    `aiProvider: ${cfg.aiProvider}`,
-    `ocrProvider: ${cfg.ocrProvider}`,
-    `useCoupons: ${cfg.useCoupons}`,
-    `couponValue: ${cfg.couponValue.toFixed(2)}`,
-    `couponAlertThreshold: ${cfg.couponAlertThreshold}`,
-    `ocrApiKeys:`,
-    ocrKeys,
-    `aiApiKeys:`,
-    aiKeys,
-  ].join("\n") + "\n";
-
+uiRefs.btnOptExport.addEventListener("click", () => {
+  const yml = exportConfigYaml(config.current);
   const blob = new Blob([yml], { type: "text/yaml" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -194,43 +59,43 @@ btnOptExport.addEventListener("click", () => {
   URL.revokeObjectURL(url);
 });
 
-selAi.addEventListener("change", () => {
-  inputAiKey.value = config.current.aiApiKeys[selAi.value] ?? "";
+uiRefs.selAi.addEventListener("change", () => {
+  uiRefs.inputAiKey.value = config.current.aiApiKeys[uiRefs.selAi.value] ?? "";
 });
 
-selOcr.addEventListener("change", () => {
-  inputOcrKey.value = config.current.ocrApiKeys[selOcr.value] ?? "";
+uiRefs.selOcr.addEventListener("change", () => {
+  uiRefs.inputOcrKey.value = config.current.ocrApiKeys[uiRefs.selOcr.value] ?? "";
 });
 
-function updateThresholdLabel(val: number): void {
-  thresholdLabel.textContent = `${Math.round(val * 100)}%`;
-}
+
 
 /* ??? Crop slider ??? */
-cropSlider.addEventListener("input", () => {
-  const v = parseFloat(cropSlider.value);
+uiRefs.cropSlider.addEventListener("input", () => {
+  const v = parseFloat(uiRefs.cropSlider.value);
   const maskPercent = (v * 75) / 2;
-  maskTop.style.height = `${maskPercent}%`;
-  maskBottom.style.height = `${maskPercent}%`;
+  uiRefs.maskTop.style.height = `${maskPercent}%`;
+  uiRefs.maskBottom.style.height = `${maskPercent}%`;
 });
 
 /* ??? Totals update ??? */
+
 listManager.onTotalUpdated((total, coupons) => {
-  totalValue.textContent = `${total.toFixed(2)} ${config.getCurrencySymbol()}`;
+  uiRefs.totalValue.textContent = `${total.toFixed(2)} ${config.getCurrencySymbol()}`;
 
   if (config.current.useCoupons) {
-    couponSection.classList.add("visible");
-    couponValue.textContent = coupons > 0 ? `x${coupons}` : "";
+    uiRefs.couponSection.classList.add("visible");
+    uiRefs.couponValue.textContent = coupons > 0 ? `x${coupons}` : "";
   } else {
-    couponSection.classList.remove("visible");
+    uiRefs.couponSection.classList.remove("visible");
   }
 });
 
+
 listManager.onCouponAlert((show, remaining) => {
   if (show && config.current.useCoupons) {
-    alertEl.textContent = `Add just ${remaining.toFixed(2)} ${config.getCurrencySymbol()} more to get another coupon!`;
+    uiRefs.alertEl.textContent = `Add just ${remaining.toFixed(2)} ${config.getCurrencySymbol()} more to get another coupon!`;
   } else {
-    alertEl.textContent = "";
+    uiRefs.alertEl.textContent = "";
   }
 });
 
@@ -238,37 +103,7 @@ config.onChanged(() => {
   listManager.recalculate();
 });
 
-/* ??? Result list ??? */
-function addResultItem(item: PriceItem, isError = false): void {
-  const div = document.createElement("div");
-  div.className = `result-item${isError ? " error" : ""}`;
-  div.dataset.id = String(item.id);
-
-  const productSpan = document.createElement("span");
-  productSpan.className = "product";
-  productSpan.textContent = item.product;
-
-  const priceSpan = document.createElement("span");
-  priceSpan.className = "price";
-  priceSpan.textContent = isError ? "" : `${item.price.toFixed(2)} ${config.getCurrencySymbol()}`;
-
-  const removeBtn = document.createElement("button");
-  removeBtn.className = "remove-btn";
-  removeBtn.textContent = "\u00D7";
-  removeBtn.addEventListener("click", () => {
-    if (!isError) listManager.removeItem(item.id);
-    div.remove();
-  });
-
-  div.appendChild(productSpan);
-  div.appendChild(priceSpan);
-  div.appendChild(removeBtn);
-  resultList.appendChild(div);
-
-  if (!isError) {
-    listManager.addItem(item);
-  }
-}
+// ...existing code...
 
 /* ??? AI with fallback ??? */
 async function callAiWithFallback(ocrText: string): Promise<PriceResult> {
@@ -296,16 +131,18 @@ async function callAiWithFallback(ocrText: string): Promise<PriceResult> {
 }
 
 /* ??? Scan ??? */
+
 let scanning = false;
 
 async function doScan(): Promise<void> {
   if (scanning) return;
   scanning = true;
-  spinner.classList.add("active");
-  btnScan.disabled = true;
+
+  uiRefs.spinner.classList.add("active");
+  uiRefs.btnScan.disabled = true;
 
   try {
-    const cropVal = parseFloat(cropSlider.value);
+    const cropVal = parseFloat(uiRefs.cropSlider.value);
     const base64 = camera.captureCropped(cropVal);
     if (!base64) throw new Error("Camera capture failed");
 
@@ -322,57 +159,57 @@ async function doScan(): Promise<void> {
     addResultItem({ id: generateId(), product: `[Error] ${msg}`, price: 0 }, true);
   } finally {
     scanning = false;
-    spinner.classList.remove("active");
-    btnScan.disabled = false;
+    uiRefs.spinner.classList.remove("active");
+    uiRefs.btnScan.disabled = false;
   }
 }
 
-btnScan.addEventListener("click", doScan);
+uiRefs.btnScan.addEventListener("click", doScan);
 
 /* ??? Options modal ??? */
-btnOptions.addEventListener("click", () => {
+uiRefs.btnOptions.addEventListener("click", () => {
   populateOptions();
   optionsModal.open();
 });
 
-sliderThreshold.addEventListener("input", () => {
-  const raw = parseFloat(sliderThreshold.value);
+uiRefs.sliderThreshold.addEventListener("input", () => {
+  const raw = parseFloat(uiRefs.sliderThreshold.value);
   const stepped = Math.round(raw / 0.05) * 0.05;
   const clamped = Math.max(0.05, Math.min(0.30, stepped));
-  sliderThreshold.value = String(clamped);
-  updateThresholdLabel(clamped);
+  uiRefs.sliderThreshold.value = String(clamped);
+  updateThresholdLabel(clamped, uiRefs.thresholdLabel);
 });
 
-btnOptOk.addEventListener("click", () => {
-  const updatedAiKeys = { ...config.current.aiApiKeys, [selAi.value]: inputAiKey.value.trim() };
-  const updatedOcrKeys = { ...config.current.ocrApiKeys, [selOcr.value]: inputOcrKey.value.trim() };
+uiRefs.btnOptOk.addEventListener("click", () => {
+  const updatedAiKeys = { ...config.current.aiApiKeys, [uiRefs.selAi.value]: uiRefs.inputAiKey.value.trim() };
+  const updatedOcrKeys = { ...config.current.ocrApiKeys, [uiRefs.selOcr.value]: uiRefs.inputOcrKey.value.trim() };
   config.save({
-    aiProvider: selAi.value as AiProvider,
-    ocrProvider: selOcr.value as OcrProvider,
-    currency: selCurrency.value as CurrencyCode,
+    aiProvider: uiRefs.selAi.value as AiProvider,
+    ocrProvider: uiRefs.selOcr.value as OcrProvider,
+    currency: uiRefs.selCurrency.value as CurrencyCode,
     ocrApiKeys: updatedOcrKeys,
     aiApiKeys: updatedAiKeys,
-    useCoupons: chkCoupons.checked,
-    couponValue: parseFloat(inputCouponVal.value) || 0,
-    couponAlertThreshold: parseFloat(sliderThreshold.value) || 0.2,
+    useCoupons: uiRefs.chkCoupons.checked,
+    couponValue: parseFloat(uiRefs.inputCouponVal.value) || 0,
+    couponAlertThreshold: parseFloat(uiRefs.sliderThreshold.value) || 0.2,
   });
   optionsModal.close();
 });
 
-btnOptCancel.addEventListener("click", () => {
+uiRefs.btnOptCancel.addEventListener("click", () => {
   optionsModal.close();
 });
 
 /* ??? Add modal ??? */
-btnAdd.addEventListener("click", () => {
-  inputProduct.value = "";
-  inputPrice.value = "";
+uiRefs.btnAdd.addEventListener("click", () => {
+  uiRefs.inputProduct.value = "";
+  uiRefs.inputPrice.value = "";
   addModal.open();
 });
 
-btnAddOk.addEventListener("click", () => {
-  const product = inputProduct.value.replace(/\n/g, " ").trim();
-  const priceText = inputPrice.value.trim().replace(",", ".");
+uiRefs.btnAddOk.addEventListener("click", () => {
+  const product = uiRefs.inputProduct.value.replace(/\n/g, " ").trim();
+  const priceText = uiRefs.inputPrice.value.trim().replace(",", ".");
   if (!product || !priceText) return;
 
   const price = parseFloat(priceText);
@@ -383,7 +220,7 @@ btnAddOk.addEventListener("click", () => {
   addModal.close();
 });
 
-btnAddCancel.addEventListener("click", () => {
+uiRefs.btnAddCancel.addEventListener("click", () => {
   addModal.close();
 });
 
@@ -393,7 +230,7 @@ camera.start().catch((err) => {
 });
 
 /* ??? Init totals ??? */
-totalValue.textContent = `0.00 ${config.getCurrencySymbol()}`;
+uiRefs.totalValue.textContent = `0.00 ${config.getCurrencySymbol()}`;
 
 /* ??? Service Worker ??? */
 if ("serviceWorker" in navigator) {

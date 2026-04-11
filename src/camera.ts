@@ -46,16 +46,43 @@ export class CameraService {
 
     const vw = this.video.videoWidth;
     const vh = this.video.videoHeight;
-    const cropH = Math.round(vh * (1 - cropRatio * 0.75));
-    const offsetY = Math.round((vh - cropH) / 2);
+    const displayW = this.video.clientWidth;
+    const displayH = this.video.clientHeight;
+
+    // Compute visible source rect accounting for object-fit: cover
+    const videoAR = vw / vh;
+    const displayAR = displayW / displayH;
+
+    let srcX: number, srcY: number, srcW: number, srcH: number;
+
+    if (videoAR > displayAR) {
+      // Video is wider than container — sides are cropped
+      srcH = vh;
+      srcW = vh * displayAR;
+      srcX = (vw - srcW) / 2;
+      srcY = 0;
+    } else {
+      // Video is taller than container — top/bottom are cropped
+      srcW = vw;
+      srcH = vw / displayAR;
+      srcX = 0;
+      srcY = (vh - srcH) / 2;
+    }
+
+    // Apply the slider crop on top of the visible area
+    const cropAmount = srcH * cropRatio * 0.75;
+    const finalX = Math.round(srcX);
+    const finalY = Math.round(srcY + cropAmount / 2);
+    const finalW = Math.round(srcW);
+    const finalH = Math.round(srcH - cropAmount);
 
     const canvas = document.createElement("canvas");
-    canvas.width = vw;
-    canvas.height = cropH;
+    canvas.width = finalW;
+    canvas.height = finalH;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
-    ctx.drawImage(this.video, 0, offsetY, vw, cropH, 0, 0, vw, cropH);
+    ctx.drawImage(this.video, finalX, finalY, finalW, finalH, 0, 0, finalW, finalH);
     return canvas.toDataURL("image/jpeg", 0.75).split(",")[1];
   }
 }
