@@ -78,6 +78,8 @@ export const uiRefs = {
   maskBottom: document.getElementById("camera-mask") as HTMLElement,
   spinner: document.getElementById("spinner") as HTMLElement,
   alertEl: document.getElementById("coupon-alert") as HTMLElement,
+  cashSection: document.getElementById("cash-section") as HTMLElement,
+  cashValue: document.getElementById("cash-value") as HTMLElement,
   couponSection: document.getElementById("coupon-section") as HTMLElement,
   couponValue: document.getElementById("coupon-value") as HTMLElement,
   totalValue: document.getElementById("total-value") as HTMLElement,

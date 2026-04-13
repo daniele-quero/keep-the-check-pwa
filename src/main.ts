@@ -83,8 +83,17 @@ listManager.onTotalUpdated((total, coupons) => {
   if (config.current.useCoupons) {
     uiRefs.couponSection.classList.add("visible");
     uiRefs.couponValue.textContent = coupons > 0 ? `x${coupons}` : "";
+
+    if (coupons > 0) {
+      const cash = total - coupons * config.current.couponValue;
+      uiRefs.cashSection.classList.add("visible");
+      uiRefs.cashValue.textContent = `${cash.toFixed(2)} ${config.getCurrencySymbol()}`;
+    } else {
+      uiRefs.cashSection.classList.remove("visible");
+    }
   } else {
     uiRefs.couponSection.classList.remove("visible");
+    uiRefs.cashSection.classList.remove("visible");
   }
 });
 

@@ -130,6 +130,16 @@ html, body {
   font-weight: 700;
 }
 
+#cash-section {
+  display: none;
+}
+
+#cash-section.visible {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 #coupon-section {
   display: none;
 }
