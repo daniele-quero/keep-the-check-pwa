@@ -44,10 +44,6 @@ export function applyYamlToModal(data: Record<string, unknown>, uiRefs: any): vo
     uiRefs.selAi.value = data.aiProvider as string;
     uiRefs.inputAiKey.value = config.current.aiApiKeys[data.aiProvider as string] ?? "";
   }
-  if (typeof data.ocrProvider === "string" && Object.values(OcrProvider).includes(data.ocrProvider as OcrProvider)) {
-    uiRefs.selOcr.value = data.ocrProvider as string;
-    uiRefs.inputOcrKey.value = config.current.ocrApiKeys[data.ocrProvider as string] ?? "";
-  }
   if (typeof data.currency === "string" && Object.values(CurrencyCode).includes(data.currency as CurrencyCode)) {
     uiRefs.selCurrency.value = data.currency as string;
   }
@@ -75,6 +71,12 @@ export function applyYamlToModal(data: Record<string, unknown>, uiRefs: any): vo
     const provider = uiRefs.selAi.value;
     if (keys[provider]) uiRefs.inputAiKey.value = keys[provider];
   }
+  if (typeof data.ocrEngine === "string" && ["1", "2", "3"].includes(data.ocrEngine)) {
+    uiRefs.selOcrEngine.value = data.ocrEngine;
+  }
+  if (typeof data.ocrIsTable === "string") {
+    uiRefs.chkOcrTable.checked = data.ocrIsTable === "true";
+  }
 }
 
 export function exportConfigYaml(cfg: any): string {
@@ -87,6 +89,9 @@ export function exportConfigYaml(cfg: any): string {
     `currency: ${cfg.currency}`,
     `aiProvider: ${cfg.aiProvider}`,
     `ocrProvider: ${cfg.ocrProvider}`,
+    `ocrEngine: ${cfg.ocrEngine}`,
+    `ocrIsTable: ${cfg.ocrIsTable}`,
+    `useOcr: ${cfg.useOcr}`,
     `useCoupons: ${cfg.useCoupons}`,
     `couponValue: ${cfg.couponValue.toFixed(2)}`,
     `couponAlertThreshold: ${cfg.couponAlertThreshold}`,

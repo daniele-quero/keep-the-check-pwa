@@ -32,6 +32,9 @@ export interface AppConfigData {
   currency: CurrencyCode;
   aiProvider: AiProvider;
   ocrProvider: OcrProvider;
+  ocrEngine: string;
+  ocrIsTable: boolean;
+  useOcr: boolean;
   useCoupons: boolean;
   couponValue: number;
   couponAlertThreshold: number;
@@ -43,6 +46,9 @@ const DEFAULTS: AppConfigData = {
   currency: CurrencyCode.EUR,
   aiProvider: AiProvider.Gemini,
   ocrProvider: OcrProvider.OcrSpace,
+  ocrEngine: "1",
+  ocrIsTable: false,
+  useOcr: true,
   useCoupons: false,
   couponValue: 0,
   couponAlertThreshold: 0.2,

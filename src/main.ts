@@ -21,10 +21,12 @@ const addModal = new Modal("add-panel", "add-overlay");
 function populateOptions(): void {
   const cfg = config.current;
   populateSelect(uiRefs.selAi, Object.values(AiProvider), cfg.aiProvider);
-  populateSelect(uiRefs.selOcr, Object.values(OcrProvider), cfg.ocrProvider);
   populateSelect(uiRefs.selCurrency, Object.values(CurrencyCode), cfg.currency);
-  uiRefs.inputOcrKey.value = cfg.ocrApiKeys[cfg.ocrProvider] ?? "";
+  uiRefs.inputOcrKey.value = cfg.ocrApiKeys[OcrProvider.OcrSpace] ?? "";
   uiRefs.inputAiKey.value = cfg.aiApiKeys[cfg.aiProvider] ?? "";
+  uiRefs.selOcrEngine.value = cfg.ocrEngine;
+  uiRefs.chkOcrTable.checked = cfg.ocrIsTable;
+  uiRefs.chkUseOcr.checked = cfg.useOcr;
   uiRefs.chkCoupons.checked = cfg.useCoupons;
   uiRefs.inputCouponVal.value = cfg.couponValue.toFixed(2);
   uiRefs.sliderThreshold.value = String(cfg.couponAlertThreshold);
@@ -61,10 +63,6 @@ uiRefs.btnOptExport.addEventListener("click", () => {
 
 uiRefs.selAi.addEventListener("change", () => {
   uiRefs.inputAiKey.value = config.current.aiApiKeys[uiRefs.selAi.value] ?? "";
-});
-
-uiRefs.selOcr.addEventListener("change", () => {
-  uiRefs.inputOcrKey.value = config.current.ocrApiKeys[uiRefs.selOcr.value] ?? "";
 });
 
 
@@ -146,7 +144,10 @@ async function doScan(): Promise<void> {
     const base64 = camera.captureCropped(cropVal);
     if (!base64) throw new Error("Camera capture failed");
 
-    const ocrText = await recognizeOcr(base64, config.getOcrApiKey());
+    const ocrText = await recognizeOcr(base64, config.getOcrApiKey(), "ita", {
+      engine: config.current.ocrEngine,
+      isTable: config.current.ocrIsTable,
+    });
 
     const result = await callAiWithFallback(ocrText);
 
@@ -182,13 +183,16 @@ uiRefs.sliderThreshold.addEventListener("input", () => {
 
 uiRefs.btnOptOk.addEventListener("click", () => {
   const updatedAiKeys = { ...config.current.aiApiKeys, [uiRefs.selAi.value]: uiRefs.inputAiKey.value.trim() };
-  const updatedOcrKeys = { ...config.current.ocrApiKeys, [uiRefs.selOcr.value]: uiRefs.inputOcrKey.value.trim() };
+  const updatedOcrKeys = { ...config.current.ocrApiKeys, [OcrProvider.OcrSpace]: uiRefs.inputOcrKey.value.trim() };
   config.save({
     aiProvider: uiRefs.selAi.value as AiProvider,
-    ocrProvider: uiRefs.selOcr.value as OcrProvider,
+    ocrProvider: OcrProvider.OcrSpace,
     currency: uiRefs.selCurrency.value as CurrencyCode,
     ocrApiKeys: updatedOcrKeys,
     aiApiKeys: updatedAiKeys,
+    ocrEngine: uiRefs.selOcrEngine.value,
+    ocrIsTable: uiRefs.chkOcrTable.checked,
+    useOcr: uiRefs.chkUseOcr.checked,
     useCoupons: uiRefs.chkCoupons.checked,
     couponValue: parseFloat(uiRefs.inputCouponVal.value) || 0,
     couponAlertThreshold: parseFloat(uiRefs.sliderThreshold.value) || 0.2,

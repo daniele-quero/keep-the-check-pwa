@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>Keep The Check</title>
   <link rel="manifest" href="/manifest.json">
-  <script type="module" crossorigin src="/assets/index-rwvXxGy1.js"></script>
+  <script type="module" crossorigin src="/assets/index-Bm1QLlBw.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-DD05TGDb.css">
 </head>
 <body>
@@ -62,8 +62,12 @@
         <select id="opt-ai"></select>
       </div>
       <div class="field-group">
-        <label>OCR Client</label>
-        <select id="opt-ocr"></select>
+        <label>OCR Engine</label>
+        <select id="opt-ocr-engine">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+        </select>
       </div>
       <div class="field-group">
         <label>Currency</label>
@@ -77,6 +81,17 @@
     <div class="modal-row">
       <label>AI Key:</label>
       <input type="password" id="opt-ai-key" placeholder="AI API key" autocomplete="off">
+    </div>
+    <div class="modal-3col">
+      <div class="field-group">
+        <label>Use OCR</label>
+        <input type="checkbox" id="opt-use-ocr" checked disabled>
+      </div>
+      <div class="field-group">
+        <label>isTable</label>
+        <input type="checkbox" id="opt-ocr-table">
+      </div>
+      <div class="field-group"></div>
     </div>
     <div class="modal-3col">
       <div class="field-group">

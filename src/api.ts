@@ -13,16 +13,26 @@ const PROMPT =
   '{"items":[{"product":"product name","price":0.00}]}\n\n' +
   "OCR text:\n";
 
+export interface OcrOptions {
+  engine?: string;
+  isTable?: boolean;
+}
+
 export async function recognizeOcr(
   base64: string,
   apiKey: string,
-  language = "ita"
+  language = "ita",
+  options: OcrOptions = {}
 ): Promise<string> {
   const form = new FormData();
   form.append("apikey", apiKey);
   form.append("base64Image", `data:image/jpeg;base64,${base64}`);
   form.append("language", language);
   form.append("isOverlayRequired", "false");
+  form.append("OCREngine", options.engine ?? "1");
+  if (options.isTable) {
+    form.append("isTable", "true");
+  }
 
   const res = await fetch(OCR_ENDPOINT, { method: "POST", body: form });
   if (!res.ok) throw new Error(`OCR HTTP ${res.status}: ${res.statusText}`);

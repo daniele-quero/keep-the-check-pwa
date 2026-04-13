@@ -60,8 +60,12 @@
         <select id="opt-ai"></select>
       </div>
       <div class="field-group">
-        <label>OCR Client</label>
-        <select id="opt-ocr"></select>
+        <label>OCR Engine</label>
+        <select id="opt-ocr-engine">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+        </select>
       </div>
       <div class="field-group">
         <label>Currency</label>
@@ -75,6 +79,17 @@
     <div class="modal-row">
       <label>AI Key:</label>
       <input type="password" id="opt-ai-key" placeholder="AI API key" autocomplete="off">
+    </div>
+    <div class="modal-3col">
+      <div class="field-group">
+        <label>Use OCR</label>
+        <input type="checkbox" id="opt-use-ocr" checked disabled>
+      </div>
+      <div class="field-group">
+        <label>isTable</label>
+        <input type="checkbox" id="opt-ocr-table">
+      </div>
+      <div class="field-group"></div>
     </div>
     <div class="modal-3col">
       <div class="field-group">
