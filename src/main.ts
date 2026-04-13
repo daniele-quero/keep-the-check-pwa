@@ -181,7 +181,7 @@ async function doScan(): Promise<void> {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    addResultItem({ id: generateId(), product: `[Error] ${msg}`, price: 0 }, true);
+    addResultItem({ id: generateId(), product: `[Error] ${msg}`, price: 0, quantity: 1 }, true);
   } finally {
     scanning = false;
     uiRefs.spinner.classList.remove("active");
