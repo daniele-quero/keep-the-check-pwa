@@ -1,0 +1,67 @@
+<div class="modal-overlay" id="options-overlay"></div>
+<div class="modal-panel" id="options-panel">
+  <h2>Options</h2>
+  <div class="modal-3col">
+    <div class="field-group">
+      <label>AI Client <span class="opt-tip" data-tip="AI Client">&#x2753;</span></label>
+      <select id="opt-ai"></select>
+    </div>
+    <div class="field-group">
+      <label>OCR Engine <span class="opt-tip" data-tip="OCR Engine">&#x2753;</span></label>
+      <select id="opt-ocr-engine">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+      </select>
+    </div>
+    <div class="field-group">
+      <label>Currency <span class="opt-tip" data-tip="Currency">&#x2753;</span></label>
+      <select id="opt-currency"></select>
+    </div>
+  </div>
+  <div class="modal-row">
+    <label>OCR Key: <span class="opt-tip" data-tip="OCR Key">&#x2753;</span></label>
+    <input type="password" id="opt-ocr-key" placeholder="OCR API key" autocomplete="off">
+  </div>
+  <div class="modal-row">
+    <label>AI Key: <span class="opt-tip" data-tip="AI Key">&#x2753;</span></label>
+    <input type="password" id="opt-ai-key" placeholder="AI API key" autocomplete="off">
+  </div>
+  <div class="modal-3col">
+    <div class="field-group">
+      <label>Use OCR <span class="opt-tip" data-tip="Use OCR">&#x2753;</span></label>
+      <input type="checkbox" id="opt-use-ocr" checked disabled>
+    </div>
+    <div class="field-group">
+      <label>isTable <span class="opt-tip" data-tip="isTable">&#x2753;</span></label>
+      <input type="checkbox" id="opt-ocr-table">
+    </div>
+    <div class="field-group"></div>
+  </div>
+  <div class="modal-3col">
+    <div class="field-group">
+      <label>Use Coupons <span class="opt-tip" data-tip="Use Coupons">&#x2753;</span></label>
+      <input type="checkbox" id="opt-use-coupons">
+    </div>
+    <div class="field-group">
+      <label>Value <span class="opt-tip" data-tip="Value">&#x2753;</span></label>
+      <input type="number" id="opt-coupon-value" step="0.01" min="0">
+    </div>
+    <div class="field-group">
+      <label>Threshold <span class="opt-tip" data-tip="Threshold">&#x2753;</span></label>
+      <div style="display:flex;align-items:center;gap:4px;">
+        <input type="range" id="opt-threshold" min="0.05" max="0.30" step="0.05">
+        <span class="threshold-value" id="opt-threshold-value">20%</span>
+      </div>
+    </div>
+  </div>
+  <div class="modal-row import-row">
+    <label>Import: <span class="opt-tip" data-tip="Import">&#x2753;</span></label>
+    <input type="file" id="opt-import" accept=".yml,.yaml">
+  </div>
+  <div class="modal-buttons">
+    <button class="modal-btn" id="opt-export" title="Export config"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+    <button class="modal-btn" id="opt-ok"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></button>
+    <button class="modal-btn" id="opt-cancel"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+</div>

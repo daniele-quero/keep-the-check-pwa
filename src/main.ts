@@ -3,18 +3,24 @@ import { CameraService } from "./camera";
 import { config } from "./config";
 import { listManager } from "./listManager";
 import { recognizeOcr, parseWithGemini, parseWithGroq } from "./api";
-import { Modal } from "./modal";
+import { createOptionsModal, initOptionTooltips } from "./modals/optionsModal";
+import { createAddModal } from "./modals/addModal";
 import { createPriceItem, generateId, AiProvider, OcrProvider, CurrencyCode } from "./models";
 import type { PriceItem, PriceResult } from "./models";
 import { uiRefs, populateSelect, updateThresholdLabel, addResultItem } from "./ui";
 import { parseSimpleYaml, applyYamlToModal, exportConfigYaml } from "./yamlConfig";
+import { createTutorialModal, initTutorialLang } from "./modals/tutorialModal";
 
 
 
 /* ??? Services ??? */
 const camera = new CameraService(uiRefs.video);
-const optionsModal = new Modal("options-panel", "options-overlay");
-const addModal = new Modal("add-panel", "add-overlay");
+const optionsModal = createOptionsModal();
+initOptionTooltips();
+const addModal = createAddModal();
+const tutorialModal = createTutorialModal();
+
+initTutorialLang();
 
 /* ??? Populate dropdowns ??? */
 
@@ -108,6 +114,15 @@ listManager.onCouponAlert((show, remaining) => {
 
 config.onChanged(() => {
   listManager.recalculate();
+});
+
+/* ??? Tutorial modal ??? */
+uiRefs.btnTutorial.addEventListener("click", () => {
+  tutorialModal.open();
+});
+
+(document.getElementById("tutorial-close") as HTMLButtonElement).addEventListener("click", () => {
+  tutorialModal.close();
 });
 
 // ...existing code...
