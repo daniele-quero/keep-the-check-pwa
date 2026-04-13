@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { recognizeOcr, parseWithGemini, parseWithGroq } from "../src/api";
 
+
 // Mock fetch globally
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -156,6 +157,67 @@ describe("parseWithGemini", () => {
     });
 
     await expect(parseWithGemini("text", "key")).rejects.toThrow("AI: no prices recognized");
+  });
+});
+
+describe("parseWithGroq", () => {
+  it("returns parsed prices on success", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: '{"items":[{"product":"Milk","price":1.20}]}' } }],
+      }),
+    });
+
+    const result = await parseWithGroq("Milk 1.20", "groq-key");
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].product).toBe("Milk");
+    expect(result.items[0].price).toBe(1.20);
+  });
+
+  it("handles markdown-wrapped JSON", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: '```json\n{"items":[{"product":"Eggs","price":3.00}]}\n```' } }],
+      }),
+    });
+
+    const result = await parseWithGroq("Eggs 3.00", "key");
+    expect(result.items[0].product).toBe("Eggs");
+  });
+
+  it("throws on HTTP error", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 401, statusText: "Unauthorized" });
+    await expect(parseWithGroq("text", "key")).rejects.toThrow("Groq HTTP 401");
+  });
+
+  it("throws on empty choices", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ choices: [] }),
+    });
+    await expect(parseWithGroq("text", "key")).rejects.toThrow("Groq: no response content");
+  });
+
+  it("throws on malformed JSON", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: "not json" } }],
+      }),
+    });
+    await expect(parseWithGroq("text", "key")).rejects.toThrow("AI returned invalid JSON");
+  });
+
+  it("throws on empty items array", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: '{"items":[]}' } }],
+      }),
+    });
+    await expect(parseWithGroq("text", "key")).rejects.toThrow("AI: no prices recognized");
   });
 });
 

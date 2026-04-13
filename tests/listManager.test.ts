@@ -167,4 +167,16 @@ describe("ListManager with coupons", () => {
     // total = 0 ? no show
     expect(lastAlertShow).toBe(false);
   });
+
+  it("recalculate re-fires listeners without changing total", () => {
+    lm.addItem(makeItem(1, 28.5));
+    const prevCoupons = lastCoupons;
+    const prevAlert = lastAlertShow;
+    let callCount = 0;
+    lm.onTotalUpdated(() => { callCount++; });
+    lm.recalculate();
+    expect(callCount).toBe(1);
+    expect(lastCoupons).toBe(prevCoupons);
+    expect(lastAlertShow).toBe(prevAlert);
+  });
 });
