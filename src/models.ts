@@ -18,6 +18,7 @@ export interface PriceItem {
   id: number;
   product: string;
   price: number;
+  quantity: number;
 }
 
 export interface PriceResult {
@@ -31,5 +32,5 @@ export function generateId(): number {
 }
 
 export function createPriceItem(product: string, price: number): PriceItem {
-  return { id: generateId(), product, price };
+  return { id: generateId(), product, price, quantity: 1 };
 }

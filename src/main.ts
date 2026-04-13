@@ -205,10 +205,26 @@ uiRefs.btnOptCancel.addEventListener("click", () => {
 });
 
 /* ??? Add modal ??? */
+let addQty = 1;
+
 uiRefs.btnAdd.addEventListener("click", () => {
   uiRefs.inputProduct.value = "";
   uiRefs.inputPrice.value = "";
+  addQty = 1;
+  uiRefs.addQtyDisplay.textContent = "1";
   addModal.open();
+});
+
+uiRefs.addQtyMinus.addEventListener("click", () => {
+  if (addQty > 1) {
+    addQty--;
+    uiRefs.addQtyDisplay.textContent = String(addQty);
+  }
+});
+
+uiRefs.addQtyPlus.addEventListener("click", () => {
+  addQty++;
+  uiRefs.addQtyDisplay.textContent = String(addQty);
 });
 
 uiRefs.btnAddOk.addEventListener("click", () => {
@@ -220,6 +236,7 @@ uiRefs.btnAddOk.addEventListener("click", () => {
   if (isNaN(price) || price <= 0) return;
 
   const item = createPriceItem(product, price);
+  item.quantity = addQty;
   addResultItem(item);
   addModal.close();
 });

@@ -19,7 +19,7 @@ export class ListManager {
 
   addItem(item: PriceItem): void {
     this.items.set(item.id, item);
-    this._total += item.price;
+    this._total += item.price * item.quantity;
     this.notify();
   }
 
@@ -27,7 +27,17 @@ export class ListManager {
     const item = this.items.get(id);
     if (!item) return;
     this.items.delete(id);
-    this._total -= item.price;
+    this._total -= item.price * item.quantity;
+    this.notify();
+  }
+
+  changeQuantity(id: number, delta: number): void {
+    const item = this.items.get(id);
+    if (!item) return;
+    const newQty = Math.max(1, item.quantity + delta);
+    const diff = (newQty - item.quantity) * item.price;
+    item.quantity = newQty;
+    this._total += diff;
     this.notify();
   }
 

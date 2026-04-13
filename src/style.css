@@ -179,6 +179,40 @@ html, body {
   padding: 0 0 0 12px;
 }
 
+.qty-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  flex-shrink: 0;
+}
+
+.qty-btn {
+  background: none;
+  border: 1px solid #555;
+  color: #fff;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1em;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qty-btn:active {
+  background: #333;
+}
+
+.qty-value {
+  min-width: 20px;
+  text-align: center;
+  font-size: 0.9em;
+}
+
 .result-item.error .product {
   color: #ef4444;
 }
@@ -306,16 +340,56 @@ html, body {
 }
 
 #add-price {
-  flex: 0 0 90px;
-  width: 90px;
+  flex: 1;
+  min-width: 60px;
+  max-width: 100px;
 }
 
 #add-product {
   resize: none;
   font-family: inherit;
   line-height: 1.4;
-  flex: 0 0 auto;
-  width: 65%;
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.add-qty-row {
+  align-items: center !important;
+}
+
+.add-qty-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.add-qty-btn {
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  color: #000;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1.2em;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.add-qty-btn:active {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.add-qty-display {
+  min-width: 28px;
+  text-align: center;
+  font-size: 1.1em;
+  font-weight: 700;
 }
 
 .import-row input[type="file"] {

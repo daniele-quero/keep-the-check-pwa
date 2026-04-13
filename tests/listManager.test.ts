@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { ListManager } from "../src/listManager";
 import type { PriceItem } from "../src/models";
 
-function makeItem(id: number, price: number): PriceItem {
-  return { id, product: `Item ${id}`, price };
+function makeItem(id: number, price: number, quantity = 1): PriceItem {
+  return { id, product: `Item ${id}`, price, quantity };
 }
 
 describe("ListManager", () => {
@@ -62,6 +62,35 @@ describe("ListManager", () => {
     lm.removeItem(999);
     expect(lm.total).toBe(10);
     expect(lm.count).toBe(1);
+  });
+
+  it("addItem uses price * quantity for total", () => {
+    lm.addItem(makeItem(1, 5, 3));
+    expect(lm.total).toBeCloseTo(15);
+  });
+
+  it("changeQuantity increases total correctly", () => {
+    lm.addItem(makeItem(1, 5, 1));
+    lm.changeQuantity(1, 2);
+    expect(lm.total).toBeCloseTo(15);
+  });
+
+  it("changeQuantity decreases total correctly", () => {
+    lm.addItem(makeItem(1, 5, 3));
+    lm.changeQuantity(1, -1);
+    expect(lm.total).toBeCloseTo(10);
+  });
+
+  it("changeQuantity does not go below quantity 1", () => {
+    lm.addItem(makeItem(1, 5, 1));
+    lm.changeQuantity(1, -1);
+    expect(lm.total).toBeCloseTo(5);
+  });
+
+  it("removeItem uses price * quantity for total", () => {
+    lm.addItem(makeItem(1, 5, 3));
+    lm.removeItem(1);
+    expect(lm.total).toBeCloseTo(0);
   });
 
   it("coupons are 0 when useCoupons is false", () => {

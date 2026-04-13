@@ -13,7 +13,45 @@ export function addResultItem(item: PriceItem, isError = false): void {
 
   const priceSpan = document.createElement("span");
   priceSpan.className = "price";
-  priceSpan.textContent = isError ? "" : `${item.price.toFixed(2)} ${config.getCurrencySymbol()}`;
+  priceSpan.textContent = isError ? "" : `${(item.price * item.quantity).toFixed(2)} ${config.getCurrencySymbol()}`;
+
+  div.appendChild(productSpan);
+
+  if (!isError) {
+    const qtyControls = document.createElement("div");
+    qtyControls.className = "qty-controls";
+
+    const minusBtn = document.createElement("button");
+    minusBtn.className = "qty-btn";
+    minusBtn.textContent = "−";
+
+    const qtyValue = document.createElement("span");
+    qtyValue.className = "qty-value";
+    qtyValue.textContent = String(item.quantity);
+
+    const plusBtn = document.createElement("button");
+    plusBtn.className = "qty-btn";
+    plusBtn.textContent = "+";
+
+    minusBtn.addEventListener("click", () => {
+      listManager.changeQuantity(item.id, -1);
+      qtyValue.textContent = String(item.quantity);
+      priceSpan.textContent = `${(item.price * item.quantity).toFixed(2)} ${config.getCurrencySymbol()}`;
+    });
+
+    plusBtn.addEventListener("click", () => {
+      listManager.changeQuantity(item.id, +1);
+      qtyValue.textContent = String(item.quantity);
+      priceSpan.textContent = `${(item.price * item.quantity).toFixed(2)} ${config.getCurrencySymbol()}`;
+    });
+
+    qtyControls.appendChild(minusBtn);
+    qtyControls.appendChild(qtyValue);
+    qtyControls.appendChild(plusBtn);
+    div.appendChild(qtyControls);
+  }
+
+  div.appendChild(priceSpan);
 
   const removeBtn = document.createElement("button");
   removeBtn.className = "remove-btn";
@@ -23,8 +61,6 @@ export function addResultItem(item: PriceItem, isError = false): void {
     div.remove();
   });
 
-  div.appendChild(productSpan);
-  div.appendChild(priceSpan);
   div.appendChild(removeBtn);
   uiRefs.resultList.appendChild(div);
 
@@ -69,6 +105,9 @@ export const uiRefs = {
   inputPrice: document.getElementById("add-price") as HTMLInputElement,
   btnAddOk: document.getElementById("add-ok") as HTMLButtonElement,
   btnAddCancel: document.getElementById("add-cancel") as HTMLButtonElement,
+  addQtyMinus: document.getElementById("add-qty-minus") as HTMLButtonElement,
+  addQtyPlus: document.getElementById("add-qty-plus") as HTMLButtonElement,
+  addQtyDisplay: document.getElementById("add-qty-display") as HTMLElement,
 };
 
 export function populateSelect(sel: HTMLSelectElement, values: string[], selected: string): void {

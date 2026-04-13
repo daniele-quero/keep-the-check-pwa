@@ -12,6 +12,7 @@ describe("models", () => {
     const item = createPriceItem("Apple", 1.5);
     expect(item.product).toBe("Apple");
     expect(item.price).toBe(1.5);
+    expect(item.quantity).toBe(1);
     expect(item.id).toBeGreaterThan(0);
   });
 
