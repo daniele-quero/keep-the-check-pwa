@@ -177,7 +177,7 @@ async function doScan(): Promise<void> {
 
     for (const item of result.items) {
       const priceItem = createPriceItem(item.product, item.price);
-      addResultItem(priceItem);
+      addResultItem(priceItem, false, openEditModal);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -230,8 +230,19 @@ uiRefs.btnOptCancel.addEventListener("click", () => {
 
 /* ??? Add modal ??? */
 let addQty = 1;
+let editingItemId: number | null = null;
+
+function openEditModal(item: PriceItem): void {
+  editingItemId = item.id;
+  uiRefs.inputProduct.value = item.product;
+  uiRefs.inputPrice.value = String(item.price);
+  addQty = item.quantity;
+  uiRefs.addQtyDisplay.textContent = String(item.quantity);
+  addModal.open();
+}
 
 uiRefs.btnAdd.addEventListener("click", () => {
+  editingItemId = null;
   uiRefs.inputProduct.value = "";
   uiRefs.inputPrice.value = "";
   addQty = 1;
@@ -259,13 +270,25 @@ uiRefs.btnAddOk.addEventListener("click", () => {
   const price = parseFloat(priceText);
   if (isNaN(price) || price <= 0) return;
 
-  const item = createPriceItem(product, price);
-  item.quantity = addQty;
-  addResultItem(item);
+  if (editingItemId !== null) {
+    listManager.updateItem(editingItemId, product, price, addQty);
+    const row = uiRefs.resultList.querySelector(`[data-id="${editingItemId}"]`) as HTMLElement | null;
+    if (row) {
+      (row.querySelector(".product") as HTMLElement).textContent = product;
+      (row.querySelector(".qty-value") as HTMLElement).textContent = String(addQty);
+      (row.querySelector(".price") as HTMLElement).textContent = `${(price * addQty).toFixed(2)} ${config.getCurrencySymbol()}`;
+    }
+    editingItemId = null;
+  } else {
+    const item = createPriceItem(product, price);
+    item.quantity = addQty;
+    addResultItem(item, false, openEditModal);
+  }
   addModal.close();
 });
 
 uiRefs.btnAddCancel.addEventListener("click", () => {
+  editingItemId = null;
   addModal.close();
 });
 

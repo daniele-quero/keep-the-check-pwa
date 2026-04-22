@@ -2,7 +2,7 @@ import { listManager } from "./listManager";
 import { config } from "./config";
 import { generateId } from "./models";
 import type { PriceItem } from "./models";
-export function addResultItem(item: PriceItem, isError = false): void {
+export function addResultItem(item: PriceItem, isError = false, onEdit?: (item: PriceItem) => void): void {
   const div = document.createElement("div");
   div.className = `result-item${isError ? " error" : ""}`;
   div.dataset.id = String(item.id);
@@ -10,6 +10,10 @@ export function addResultItem(item: PriceItem, isError = false): void {
   const productSpan = document.createElement("span");
   productSpan.className = "product";
   productSpan.textContent = item.product;
+  if (!isError && onEdit) {
+    productSpan.style.cursor = "pointer";
+    productSpan.addEventListener("click", () => onEdit(item));
+  }
 
   const priceSpan = document.createElement("span");
   priceSpan.className = "price";

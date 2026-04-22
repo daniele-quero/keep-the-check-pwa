@@ -180,3 +180,53 @@ describe("ListManager with coupons", () => {
     expect(lastAlertShow).toBe(prevAlert);
   });
 });
+
+describe("ListManager.updateItem", () => {
+  let lm: ListManager;
+  let lastTotal: number;
+
+  beforeEach(() => {
+    lm = new ListManager();
+    lastTotal = -1;
+    lm.onTotalUpdated((total) => { lastTotal = total; });
+  });
+
+  it("updates product name, price and quantity", () => {
+    lm.addItem(makeItem(1, 10, 1));
+    lm.updateItem(1, "Updated", 5, 3);
+    expect(lm.total).toBeCloseTo(15);
+    expect(lastTotal).toBeCloseTo(15);
+  });
+
+  it("correctly adjusts total when price changes", () => {
+    lm.addItem(makeItem(1, 10, 2));
+    lm.updateItem(1, "Item 1", 7, 2);
+    expect(lm.total).toBeCloseTo(14);
+  });
+
+  it("correctly adjusts total when quantity changes", () => {
+    lm.addItem(makeItem(1, 5, 2));
+    lm.updateItem(1, "Item 1", 5, 4);
+    expect(lm.total).toBeCloseTo(20);
+  });
+
+  it("does not change total for non-existent id", () => {
+    lm.addItem(makeItem(1, 10, 1));
+    lm.updateItem(999, "Ghost", 99, 9);
+    expect(lm.total).toBeCloseTo(10);
+  });
+
+  it("does not affect other items in the list", () => {
+    lm.addItem(makeItem(1, 10, 1));
+    lm.addItem(makeItem(2, 5, 2));
+    lm.updateItem(1, "Updated", 8, 1);
+    expect(lm.total).toBeCloseTo(18); // 8 + 10
+  });
+
+  it("count remains unchanged after updateItem", () => {
+    lm.addItem(makeItem(1, 10, 1));
+    lm.addItem(makeItem(2, 5, 1));
+    lm.updateItem(1, "New name", 20, 1);
+    expect(lm.count).toBe(2);
+  });
+});

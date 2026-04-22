@@ -49,6 +49,7 @@ const it: TutorialContent = {
         "Il numero centrale indica la quantità: usa − e + per modificarla senza rimuovere l'articolo.",
         "La quantità minima è 1: il pulsante − non ha effetto al di sotto di questo valore.",
         "Gli articoli in rosso indicano un errore di scansione.",
+        "Tocca il nome del prodotto per aprire la modale di modifica con i valori precompilati: puoi aggiornare nome, prezzo e quantità. La conferma aggiornerà l'articolo senza aggiungerne un altro.",
       ],
     },
     {
@@ -150,6 +151,7 @@ const en: TutorialContent = {
         "The central number shows the quantity: use − and + to change it without removing the item.",
         "Minimum quantity is 1: the − button has no effect below this value.",
         "Items in red indicate a scan error.",
+        "Tap the product name to open the edit modal with pre-filled values: you can update the name, price and quantity. Confirming will update the item without adding a new one.",
       ],
     },
     {

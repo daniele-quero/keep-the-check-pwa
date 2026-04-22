@@ -41,6 +41,17 @@ export class ListManager {
     this.notify();
   }
 
+  updateItem(id: number, product: string, price: number, quantity: number): void {
+    const item = this.items.get(id);
+    if (!item) return;
+    this._total -= item.price * item.quantity;
+    item.product = product;
+    item.price = price;
+    item.quantity = quantity;
+    this._total += price * quantity;
+    this.notify();
+  }
+
   recalculate(): void {
     this.notify();
   }
