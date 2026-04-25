@@ -1,6 +1,11 @@
 import { PriceResult } from "./models";
 
-const OCR_ENDPOINT = "https://api.ocr.space/parse/image";
+// In development Vite proxies /ocr-proxy → https://api.ocr.space/parse/image
+// to avoid CORS. In production the direct URL is used (requires a backend proxy
+// or an origin that OCR Space permits).
+const OCR_ENDPOINT = import.meta.env.DEV
+  ? "/ocr-proxy"
+  : "https://api.ocr.space/parse/image";
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent";
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 
