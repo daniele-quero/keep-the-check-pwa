@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { ConfigService } from "../src/config";
+import { ConfigService, type AppConfigData } from "../src/config";
 import { CurrencyCode, AiProvider, OcrProvider } from "../src/models";
 
 function createMockStorage(): Storage {
@@ -84,5 +84,71 @@ describe("ConfigService", () => {
   it("getCurrencySymbol returns ? for unknown code", () => {
     svc.save({ currency: "FAKE" as CurrencyCode });
     expect(svc.getCurrencySymbol()).toBe("?");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dynamic round-trip: every AppConfigData field must survive save → reload
+// ---------------------------------------------------------------------------
+// Non-default test value for every field of AppConfigData.
+// If a field is ever added to AppConfigData, the "covers every field" test
+// below will fail with a clear diff, forcing the map to be updated.
+const OPTIONS_TEST_VALUES: AppConfigData = {
+  currency: CurrencyCode.USD,
+  aiProvider: AiProvider.Groq,
+  ocrProvider: OcrProvider.OcrSpace,
+  ocrEngine: "3",
+  ocrIsTable: true,
+  useOcr: false,
+  useCoupons: true,
+  couponValue: 50,
+  couponAlertThreshold: 0.1,
+  ocrApiKeys: { OcrSpace: "ocr-test-key" },
+  aiApiKeys: { Gemini: "gemini-test-key", Groq: "groq-test-key" },
+};
+
+describe("ConfigService – options modal dynamic round-trip", () => {
+  let storage: Storage;
+
+  beforeEach(() => {
+    storage = createMockStorage();
+  });
+
+  it("OPTIONS_TEST_VALUES covers every AppConfigData field", () => {
+    const svc = new ConfigService(storage);
+    const configKeys = Object.keys(svc.current).sort();
+    const testKeys = Object.keys(OPTIONS_TEST_VALUES).sort();
+    expect(testKeys).toEqual(configKeys);
+  });
+
+  it.each(Object.entries(OPTIONS_TEST_VALUES) as [keyof AppConfigData, AppConfigData[keyof AppConfigData]][])(
+    "field '%s' is persisted to localStorage and reloaded correctly",
+    (key, value) => {
+      const svc = new ConfigService(storage);
+      svc.save({ [key]: value } as Partial<AppConfigData>);
+
+      // Verify the raw JSON in storage contains the expected value
+      const persisted = JSON.parse(storage.getItem("appConfig")!) as Record<string, unknown>;
+      expect(persisted[key]).toEqual(value);
+
+      // Verify a fresh ConfigService instance reads the persisted value
+      const svc2 = new ConfigService(storage);
+      expect(svc2.current[key]).toEqual(value);
+    }
+  );
+
+  it("all fields together survive a full save/reload cycle", () => {
+    const svc = new ConfigService(storage);
+    svc.save(OPTIONS_TEST_VALUES);
+
+    const persisted = JSON.parse(storage.getItem("appConfig")!) as Record<string, unknown>;
+    for (const [key, value] of Object.entries(OPTIONS_TEST_VALUES)) {
+      expect(persisted[key]).toEqual(value);
+    }
+
+    const svc2 = new ConfigService(storage);
+    for (const [key, value] of Object.entries(OPTIONS_TEST_VALUES) as [keyof AppConfigData, AppConfigData[keyof AppConfigData]][]) {
+      expect(svc2.current[key]).toEqual(value);
+    }
   });
 });
