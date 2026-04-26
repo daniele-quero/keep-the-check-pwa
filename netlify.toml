@@ -1,0 +1,11 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Server-side proxy: the browser hits /ocr-proxy on this domain (same-origin, no CORS).
+# Netlify transparently rewrites the request to OCR Space before sending it upstream.
+[[redirects]]
+  from   = "/ocr-proxy"
+  to     = "https://api.ocr.space/parse/image"
+  status = 200
+  force  = true

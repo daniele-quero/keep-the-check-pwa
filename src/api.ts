@@ -1,11 +1,9 @@
 import { PriceResult } from "./models";
 
-// In development Vite proxies /ocr-proxy → https://api.ocr.space/parse/image
-// to avoid CORS. In production the direct URL is used (requires a backend proxy
-// or an origin that OCR Space permits).
-const OCR_ENDPOINT = import.meta.env.DEV
-  ? "/ocr-proxy"
-  : "https://api.ocr.space/parse/image";
+// Always use the same-origin /ocr-proxy path.
+// In development, Vite proxies it to https://api.ocr.space/parse/image (vite.config.ts).
+// In production, Netlify rewrites it server-side (netlify.toml) — no CORS issues.
+const OCR_ENDPOINT = "/ocr-proxy";
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent";
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 

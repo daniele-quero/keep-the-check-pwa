@@ -25,7 +25,7 @@ describe("recognizeOcr", () => {
     expect(result).toBe("Product A 5.99\nProduct B 3.50");
 
     const [url, options] = mockFetch.mock.calls[0];
-    expect(url).toBe("https://api.ocr.space/parse/image");
+    expect(url).toBe("/ocr-proxy");
     expect(options.method).toBe("POST");
   });
 
