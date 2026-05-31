@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { ConfigService, type AppConfigData } from "../src/config";
+import {
+  AI_PROVIDER_PRESETS,
+  ConfigService,
+  type AppConfigData,
+} from "../src/config";
 import { CurrencyCode } from "../src/models";
 
 function createMockStorage(): Storage {
@@ -14,6 +18,12 @@ function createMockStorage(): Storage {
   };
 }
 
+const TEST_PROVIDERS = AI_PROVIDER_PRESETS.map((provider) => ({
+  ...provider,
+  enabled: provider.id === "huggingface",
+  priority: provider.priority + 1,
+}));
+
 describe("ConfigService", () => {
   let storage: Storage;
   let svc: ConfigService;
@@ -27,6 +37,7 @@ describe("ConfigService", () => {
     expect(svc.current.currency).toBe(CurrencyCode.EUR);
     expect(svc.current.useCoupons).toBe(false);
     expect(svc.current.couponAlertThreshold).toBe(0.2);
+    expect(svc.current.aiProviders.length).toBeGreaterThanOrEqual(5);
   });
 
   it("saves and persists to storage", () => {
@@ -44,7 +55,7 @@ describe("ConfigService", () => {
     storage.setItem("appConfig", JSON.stringify({
       currency: "GBP",
       couponValue: 10,
-      schemaVersion: 3,
+      schemaVersion: 4,
     }));
 
     const svc2 = new ConfigService(storage);
@@ -95,8 +106,9 @@ const OPTIONS_TEST_VALUES: AppConfigData = {
   aiApiKey: "sk-test-key",
   aiTimeoutMs: 12345,
   aiUseProxy: false,
+  aiProviders: TEST_PROVIDERS,
   requireManualConfirm: false,
-  schemaVersion: 3,
+  schemaVersion: 4,
 };
 
 describe("ConfigService – options modal dynamic round-trip", () => {
@@ -150,18 +162,19 @@ describe("ConfigService – AI-image fields and schema migration", () => {
     storage = createMockStorage();
   });
 
-  it("empty storage yields defaults with schemaVersion 3", () => {
+  it("empty storage yields defaults with schemaVersion 4", () => {
     const svc = new ConfigService(storage);
     expect(svc.current.aiEndpoint).toBe("");
     expect(svc.current.aiModel).toBe("gpt-4o-mini");
     expect(svc.current.aiApiKey).toBe("");
     expect(svc.current.aiTimeoutMs).toBe(30000);
     expect(svc.current.aiUseProxy).toBe(true);
+    expect(svc.current.aiProviders.length).toBeGreaterThanOrEqual(5);
     expect(svc.current.requireManualConfirm).toBe(true);
-    expect(svc.current.schemaVersion).toBe(3);
+    expect(svc.current.schemaVersion).toBe(4);
   });
 
-  it("loading a legacy v2 blob strips legacy keys, fills defaults and stamps schemaVersion 3", () => {
+  it("loading a legacy v2 blob strips legacy keys, fills defaults and stamps schemaVersion 4", () => {
     const legacy = {
       currency: "USD",
       aiProvider: "Groq",
@@ -182,7 +195,7 @@ describe("ConfigService – AI-image fields and schema migration", () => {
     expect(svc.current.currency).toBe(CurrencyCode.USD);
     expect(svc.current.useCoupons).toBe(true);
     expect(svc.current.couponValue).toBe(7);
-    expect(svc.current.schemaVersion).toBe(3);
+    expect(svc.current.schemaVersion).toBe(4);
 
     const loaded = svc.current as unknown as Record<string, unknown>;
     expect(loaded.aiProvider).toBeUndefined();
@@ -194,7 +207,7 @@ describe("ConfigService – AI-image fields and schema migration", () => {
     expect(loaded.aiApiKeys).toBeUndefined();
 
     const persisted = JSON.parse(storage.getItem("appConfig")!) as Record<string, unknown>;
-    expect(persisted.schemaVersion).toBe(3);
+    expect(persisted.schemaVersion).toBe(4);
     expect(persisted.aiProvider).toBeUndefined();
     expect(persisted.ocrProvider).toBeUndefined();
     expect(persisted.ocrEngine).toBeUndefined();
@@ -212,13 +225,13 @@ describe("ConfigService – AI-image fields and schema migration", () => {
     new ConfigService(storage);
 
     expect(setItemSpy).toHaveBeenCalledTimes(1);
-    expect(setItemSpy).toHaveBeenCalledWith("appConfig", expect.stringContaining("\"schemaVersion\":3"));
+    expect(setItemSpy).toHaveBeenCalledWith("appConfig", expect.stringContaining("\"schemaVersion\":4"));
     const persistedArg = setItemSpy.mock.calls[0][1];
     expect(persistedArg).not.toContain("aiApiKeys");
   });
 
-  it("loading an already-v3 config is a no-op (no re-persist on read)", () => {
-    const v3 = {
+  it("loading an already-v4 config is a no-op (no re-persist on read)", () => {
+    const v4 = {
       currency: "EUR",
       useCoupons: false,
       couponValue: 0,
@@ -228,10 +241,11 @@ describe("ConfigService – AI-image fields and schema migration", () => {
       aiApiKey: "sk-abc",
       aiTimeoutMs: 15000,
       aiUseProxy: false,
+      aiProviders: TEST_PROVIDERS,
       requireManualConfirm: false,
-      schemaVersion: 3,
+      schemaVersion: 4,
     } as AppConfigData;
-    storage.setItem("appConfig", JSON.stringify(v3));
+    storage.setItem("appConfig", JSON.stringify(v4));
     const setItemSpy = vi.spyOn(storage, "setItem");
 
     const svc = new ConfigService(storage);
@@ -242,7 +256,8 @@ describe("ConfigService – AI-image fields and schema migration", () => {
     expect(svc.current.aiApiKey).toBe("sk-abc");
     expect(svc.current.aiTimeoutMs).toBe(15000);
     expect(svc.current.aiUseProxy).toBe(false);
+    expect(svc.current.aiProviders[0].id).toBe("huggingface");
     expect(svc.current.requireManualConfirm).toBe(false);
-    expect(svc.current.schemaVersion).toBe(3);
+    expect(svc.current.schemaVersion).toBe(4);
   });
 });

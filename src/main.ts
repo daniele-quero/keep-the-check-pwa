@@ -1,6 +1,6 @@
 import "./style.css";
 import { CameraService } from "./camera";
-import { config } from "./config";
+import { AI_PROVIDER_PRESETS, config, type ProviderConfig } from "./config";
 import { listManager } from "./listManager";
 import { sendImageToAI } from "./api";
 import { createOptionsModal, initOptionTooltips } from "./modals/optionsModal";
@@ -24,6 +24,62 @@ const tutorialModal = createTutorialModal();
 
 initTutorialLang();
 
+function getProviderInput(id: string, field: string): HTMLInputElement {
+  return document.getElementById(`opt-provider-${id}-${field}`) as HTMLInputElement;
+}
+
+function getProviderConfig(providers: readonly ProviderConfig[], id: string): ProviderConfig {
+  return (
+    providers.find((provider) => provider.id === id) ??
+    AI_PROVIDER_PRESETS.find((provider) => provider.id === id)!
+  );
+}
+
+function populateProviderOptions(providers: readonly ProviderConfig[]): void {
+  for (const preset of AI_PROVIDER_PRESETS) {
+    const provider = getProviderConfig(providers, preset.id);
+    getProviderInput(preset.id, "enabled").checked = provider.enabled;
+    getProviderInput(preset.id, "use-proxy").checked = provider.useProxy;
+    getProviderInput(preset.id, "priority").value = String(provider.priority);
+    getProviderInput(preset.id, "timeout").value = String(provider.timeoutMs);
+    getProviderInput(preset.id, "endpoint").value = provider.endpointTemplate;
+    getProviderInput(preset.id, "model").value = provider.model;
+    getProviderInput(preset.id, "api-key").value = provider.apiKey;
+  }
+}
+
+function readProviderOptions(): ProviderConfig[] {
+  const providers = AI_PROVIDER_PRESETS.map((preset) => {
+    const enabled = getProviderInput(preset.id, "enabled").checked;
+    const useProxy = getProviderInput(preset.id, "use-proxy").checked;
+    const priority = Math.max(
+      1,
+      parseInt(getProviderInput(preset.id, "priority").value, 10) || preset.priority
+    );
+    const timeoutMs = Math.max(
+      1000,
+      parseInt(getProviderInput(preset.id, "timeout").value, 10) || preset.timeoutMs
+    );
+    const endpointTemplate =
+      getProviderInput(preset.id, "endpoint").value.trim() || preset.endpointTemplate;
+    const model = getProviderInput(preset.id, "model").value.trim() || preset.model;
+    const apiKey = getProviderInput(preset.id, "api-key").value.trim();
+
+    return {
+      ...preset,
+      enabled,
+      useProxy,
+      priority,
+      timeoutMs,
+      endpointTemplate,
+      model,
+      apiKey,
+    };
+  });
+
+  return providers.sort((a, b) => a.priority - b.priority);
+}
+
 /* ??? Populate dropdowns ??? */
 
 function populateOptions(): void {
@@ -39,6 +95,7 @@ function populateOptions(): void {
   uiRefs.inputAiTimeout.value = String(cfg.aiTimeoutMs);
   uiRefs.chkAiUseProxy.checked = cfg.aiUseProxy;
   uiRefs.chkRequireManualConfirm.checked = cfg.requireManualConfirm;
+  populateProviderOptions(cfg.aiProviders);
 }
 
 
@@ -135,6 +192,7 @@ const addModalController = new AddModalController({
     aiModel: config.current.aiModel,
     aiTimeoutMs: config.current.aiTimeoutMs,
     aiUseProxy: config.current.aiUseProxy,
+    aiProviders: config.current.aiProviders,
     requireManualConfirm: config.current.requireManualConfirm,
   }),
   addItem: (item) => addResultItem(item, false, openEditModal),
@@ -183,6 +241,7 @@ uiRefs.sliderThreshold.addEventListener("input", () => {
 });
 
 uiRefs.btnOptOk.addEventListener("click", () => {
+  const aiProviders = readProviderOptions();
   config.save({
     currency: uiRefs.selCurrency.value as CurrencyCode,
     useCoupons: uiRefs.chkCoupons.checked,
@@ -193,6 +252,7 @@ uiRefs.btnOptOk.addEventListener("click", () => {
     aiApiKey: uiRefs.inputAiApiKey.value.trim(),
     aiTimeoutMs: Math.max(1000, parseInt(uiRefs.inputAiTimeout.value, 10) || 30000),
     aiUseProxy: uiRefs.chkAiUseProxy.checked,
+    aiProviders,
     requireManualConfirm: uiRefs.chkRequireManualConfirm.checked,
   });
   optionsModal.close();

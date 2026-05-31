@@ -1,5 +1,6 @@
 import type { AiExtractionResult, AiPrice } from "../aiPrompt";
 import type { SendImageToAIOptions } from "../api";
+import type { ProviderConfig } from "../config";
 import type { PriceItem } from "../models";
 import { createItemFromAi } from "../models";
 
@@ -9,6 +10,7 @@ export interface AddModalControllerConfig {
   aiModel: string;
   aiTimeoutMs: number;
   aiUseProxy: boolean;
+  aiProviders?: ProviderConfig[];
   requireManualConfirm: boolean;
 }
 
@@ -107,7 +109,13 @@ export class AddModalController {
 
   async analyzeImage(imageBase64: string): Promise<AiExtractionResult | null> {
     const cfg = this.deps.getConfig();
-    if (!cfg.aiEndpoint || cfg.aiEndpoint.trim() === "") {
+    const hasEnabledProviderWithKey = (cfg.aiProviders ?? []).some(
+      (provider) =>
+        provider.enabled &&
+        typeof provider.apiKey === "string" &&
+        provider.apiKey.trim().length > 0
+    );
+    if (!hasEnabledProviderWithKey && (!cfg.aiEndpoint || cfg.aiEndpoint.trim() === "")) {
       this.showFallback(FALLBACK_MESSAGE_NO_ENDPOINT);
       return null;
     }
@@ -122,6 +130,7 @@ export class AddModalController {
         model: cfg.aiModel,
         timeoutMs: cfg.aiTimeoutMs,
         useProxy: cfg.aiUseProxy,
+        aiProviders: cfg.aiProviders,
       });
     } catch {
       this.showFallback(FALLBACK_MESSAGE_DEFAULT);

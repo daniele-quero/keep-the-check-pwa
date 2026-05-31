@@ -2,6 +2,14 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { createOptionsModal } from "../src/modals/optionsModal";
 
 describe("optionsModal AI Image Analysis section", () => {
+  const providerIds = [
+    "huggingface",
+    "cloudflare",
+    "fireworks",
+    "mistral",
+    "replicate",
+  ] as const;
+
   beforeEach(() => {
     document.body.innerHTML = "";
     createOptionsModal();
@@ -54,5 +62,52 @@ describe("optionsModal AI Image Analysis section", () => {
     const warning = document.querySelector(".opt-warning") as HTMLElement | null;
     expect(warning).not.toBeNull();
     expect(warning!.textContent ?? "").toMatch(/proxy|repository|chiave/i);
+  });
+
+  it("renders provider fallback controls for all configured providers", () => {
+    for (const id of providerIds) {
+      expect(document.getElementById(`opt-provider-${id}-enabled`)).toBeInstanceOf(
+        HTMLInputElement
+      );
+      expect(document.getElementById(`opt-provider-${id}-use-proxy`)).toBeInstanceOf(
+        HTMLInputElement
+      );
+      expect(document.getElementById(`opt-provider-${id}-priority`)).toBeInstanceOf(
+        HTMLInputElement
+      );
+      expect(document.getElementById(`opt-provider-${id}-timeout`)).toBeInstanceOf(
+        HTMLInputElement
+      );
+      expect(document.getElementById(`opt-provider-${id}-endpoint`)).toBeInstanceOf(
+        HTMLInputElement
+      );
+      expect(document.getElementById(`opt-provider-${id}-model`)).toBeInstanceOf(
+        HTMLInputElement
+      );
+      expect(document.getElementById(`opt-provider-${id}-api-key`)).toBeInstanceOf(
+        HTMLInputElement
+      );
+    }
+  });
+
+  it("uses numeric constraints and hidden-api-key fields for providers", () => {
+    for (const id of providerIds) {
+      const priority = document.getElementById(
+        `opt-provider-${id}-priority`
+      ) as HTMLInputElement;
+      const timeout = document.getElementById(
+        `opt-provider-${id}-timeout`
+      ) as HTMLInputElement;
+      const apiKey = document.getElementById(
+        `opt-provider-${id}-api-key`
+      ) as HTMLInputElement;
+
+      expect(priority.type).toBe("number");
+      expect(priority.min).toBe("1");
+      expect(timeout.type).toBe("number");
+      expect(timeout.min).toBe("1000");
+      expect(apiKey.type).toBe("password");
+      expect(apiKey.getAttribute("autocomplete")).toBe("off");
+    }
   });
 });

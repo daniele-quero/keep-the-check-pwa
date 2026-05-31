@@ -101,7 +101,7 @@ npm run test:watch   # Run tests in watch mode
 
 ## AI Image Analysis Configuration
 
-The scan pipeline sends the captured JPEG (base64) plus the verbatim extraction prompt from `src/aiPrompt.ts` to a single configurable endpoint, and expects a JSON response matching the schema declared in that file (`version`, `products[]`, `image_text`, `metadata`, `warnings`, `uncertain`).
+The scan pipeline sends the captured JPEG (base64) plus the verbatim extraction prompt from `src/aiPrompt.ts` to one or more configurable AI providers, and expects a JSON response matching the schema declared in that file (`version`, `products[]`, `image_text`, `metadata`, `warnings`, `uncertain`).
 
 Configure the flow from the **Options** modal (or by importing a YAML file with the same keys). The following fields exist on `AppConfigData` in [src/config.ts](src/config.ts):
 
@@ -112,7 +112,28 @@ Configure the flow from the **Options** modal (or by importing a YAML file with 
 | `aiApiKey` | `string` | Bearer token sent in the `Authorization` header. **Only used in direct mode** (`aiUseProxy: false`). Leave empty when using a proxy. |
 | `aiTimeoutMs` | `number` | Request timeout enforced via `AbortController`. Default `30000`. |
 | `aiUseProxy` | `boolean` | When `true`, requests are sent to the relative path `/ai-proxy` and no `Authorization` header is attached — your server-side proxy is expected to inject the real key. Default `true`. |
+| `aiProviders` | `ProviderConfig[]` | Multi-provider list used for round-robin fallback. Each provider has `id`, `endpointTemplate`, `model`, `apiKey`, `useProxy`, `enabled`, `priority`, `timeoutMs`, `failureThreshold`, `cooldownMs`. |
 | `requireManualConfirm` | `boolean` | When `true`, the editable results modal is shown before items are added to the list; when `false`, items are added immediately. Default `true`. |
+
+### Built-in provider presets
+
+The default config includes these providers (disabled by default until keys/endpoints are ready):
+
+| Provider | Endpoint URL | Auth header in direct mode |
+|---|---|---|
+| Hugging Face | `https://router.huggingface.co/v1/chat/completions` | `Authorization: Bearer <key>` |
+| Cloudflare Workers AI | `https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/v1/chat/completions` | `Authorization: Bearer <token>` |
+| Fireworks | `https://api.fireworks.ai/inference/v1/chat/completions` | `Authorization: Bearer <key>` |
+| Mistral | `https://api.mistral.ai/v1/chat/completions` | `Authorization: Bearer <key>` |
+| Replicate | `https://api.replicate.com/v1/predictions` | `Authorization: Token <token>` |
+
+### Fallback policy
+
+- Enabled providers are sorted by `priority` and tried in round-robin order.
+- Only providers with a non-empty `apiKey` are eligible for fallback attempts.
+- On transient failures (`timeout`, network errors, `429`, `5xx`, parse failures) the next provider is attempted automatically.
+- Soft circuit-breaker: each provider tracks consecutive failures; when `failureThreshold` is reached, it is skipped for `cooldownMs`.
+- The public `sendImageToAI(imageBase64, prompt, opts)` API remains unchanged.
 
 ### Recommended: server-side proxy
 
@@ -135,10 +156,10 @@ If you set `aiUseProxy: false`, the browser posts directly to `aiEndpoint` with 
 
 Earlier releases used a two-step legacy OCR + text-parse pipeline. On the first load after upgrading, `ConfigService` auto-migrates any existing `localStorage["appConfig"]` payload:
 
-- `schemaVersion` is bumped to `3`.
+- `schemaVersion` is bumped to `4`.
 - Legacy keys are stripped: `ocrProvider`, `ocrEngine`, `ocrIsTable`, `useOcr`, `ocrApiKeys`, `aiProvider`, `aiApiKeys`.
 - Preserved fields (`currency`, `useCoupons`, `couponValue`, `couponAlertThreshold`) are kept as-is.
-- Defaults for the new `ai*` fields and `requireManualConfirm` are applied.
+- Defaults for the new `ai*` fields, `aiProviders`, and `requireManualConfirm` are applied.
 - The migrated payload is written back to storage exactly once.
 
 The user must then open Options to set `aiEndpoint` / `aiModel` and either enable the proxy or paste their key — there is no automatic key transfer.
@@ -186,9 +207,9 @@ Persistent configuration in `localStorage["appConfig"]`. See [AI Image Analysis 
 
 - `DEFAULTS: AppConfigData` — initial values.
 - `STORAGE_KEY = "appConfig"`.
-- `CURRENT_SCHEMA_VERSION = 3`.
+- `CURRENT_SCHEMA_VERSION = 4`.
 - `ConfigService` — reactive service:
-  - `constructor(storage?)` — loads from storage and runs legacy-migration when `schemaVersion < 3` or any legacy key is present.
+       - `constructor(storage?)` — loads from storage and runs legacy-migration when `schemaVersion < 4` or any legacy key is present.
   - `get current(): Readonly<AppConfigData>`.
   - `save(partial)` — merges, persists, fires listeners.
   - `onChanged(fn)` / `removeListener(fn)`.
