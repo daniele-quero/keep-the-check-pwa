@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "products": [
+    {
+      "id": "p1",
+      "name": "Latte Intero 1L",
+      "name_confidence": 0.95,
+      "name_raw": "Latte Intero 1L",
+      "name_candidates": [
+        { "text": "Latte Intero 1L", "confidence": 0.95 }
+      ],
+      "prices": [
+        {
+          "raw_text": "1,99 €",
+          "normalized": 1.99,
+          "currency": "EUR",
+          "confidence": 0.97,
+          "type": "unit_price",
+          "bounding_box": { "x": 12, "y": 40, "width": 80, "height": 30 },
+          "notes": ""
+        }
+      ],
+      "notes": ""
+    }
+  ],
+  "image_text": "Latte Intero 1L 1,99 €",
+  "metadata": { "processing_ms": 123, "model": "test-model" },
+  "warnings": [],
+  "uncertain": false
+}

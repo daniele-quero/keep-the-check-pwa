@@ -18,6 +18,8 @@ export class ListManager {
   onCouponAlert(fn: AlertListener): void { this.alertListeners.push(fn); }
 
   addItem(item: PriceItem): void {
+    if (item.source === undefined) item.source = "legacy";
+    if (item.currency === undefined) item.currency = config.current.currency;
     this.items.set(item.id, item);
     this._total += item.price * item.quantity;
     this.notify();

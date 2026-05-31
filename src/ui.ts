@@ -73,7 +73,6 @@ export function addResultItem(item: PriceItem, isError = false, onEdit?: (item: 
   }
 }
 // UI DOM refs and helpers for Keep The Check
-import { AiProvider, OcrProvider, CurrencyCode } from "./models";
 // import { config } from "./config";
 
 export const uiRefs = {
@@ -93,17 +92,17 @@ export const uiRefs = {
   get btnAdd()         { return document.getElementById("btn-add") as HTMLButtonElement; },
   get btnScan()        { return document.getElementById("btn-scan") as HTMLButtonElement; },
   get btnTutorial()    { return document.getElementById("btn-tutorial") as HTMLButtonElement; },
-  get selAi()          { return document.getElementById("opt-ai") as HTMLSelectElement; },
-  get selOcrEngine()   { return document.getElementById("opt-ocr-engine") as HTMLSelectElement; },
   get selCurrency()    { return document.getElementById("opt-currency") as HTMLSelectElement; },
   get chkCoupons()     { return document.getElementById("opt-use-coupons") as HTMLInputElement; },
   get inputCouponVal() { return document.getElementById("opt-coupon-value") as HTMLInputElement; },
   get sliderThreshold(){ return document.getElementById("opt-threshold") as HTMLInputElement; },
   get thresholdLabel() { return document.getElementById("opt-threshold-value") as HTMLElement; },
-  get inputOcrKey()    { return document.getElementById("opt-ocr-key") as HTMLInputElement; },
-  get inputAiKey()     { return document.getElementById("opt-ai-key") as HTMLInputElement; },
-  get chkUseOcr()      { return document.getElementById("opt-use-ocr") as HTMLInputElement; },
-  get chkOcrTable()    { return document.getElementById("opt-ocr-table") as HTMLInputElement; },
+  get inputAiEndpoint(){ return document.getElementById("opt-ai-endpoint") as HTMLInputElement; },
+  get inputAiModel()   { return document.getElementById("opt-ai-model") as HTMLInputElement; },
+  get inputAiApiKey()  { return document.getElementById("opt-ai-api-key") as HTMLInputElement; },
+  get inputAiTimeout() { return document.getElementById("opt-ai-timeout") as HTMLInputElement; },
+  get chkAiUseProxy()  { return document.getElementById("opt-ai-use-proxy") as HTMLInputElement; },
+  get chkRequireManualConfirm() { return document.getElementById("opt-require-manual-confirm") as HTMLInputElement; },
   get inputImport()    { return document.getElementById("opt-import") as HTMLInputElement; },
   get btnOptExport()   { return document.getElementById("opt-export") as HTMLButtonElement; },
   get btnOptOk()       { return document.getElementById("opt-ok") as HTMLButtonElement; },

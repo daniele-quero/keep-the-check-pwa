@@ -1,8 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { recognizeOcr, parseWithGemini, parseWithGroq } from "../src/api";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import * as api from "../src/api";
+import { sendImageToAI } from "../src/api";
+import { AiExtractionError } from "../src/aiPrompt";
 
-
-// Mock fetch globally
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
@@ -10,266 +12,202 @@ beforeEach(() => {
   mockFetch.mockReset();
 });
 
-describe("recognizeOcr", () => {
-  it("returns parsed text on success", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        ParsedResults: [{ ParsedText: "Product A 5.99\nProduct B 3.50" }],
-        OCRExitCode: 1,
-        IsErroredOnProcessing: false,
-      }),
-    });
+describe("api module surface", () => {
+  it("does not export legacy text-pipeline functions", () => {
+    expect(api).not.toHaveProperty("recognizeOcr");
+    expect(api).not.toHaveProperty("parseWithGemini");
+    expect(api).not.toHaveProperty("parseWithGroq");
+  });
+});
 
-    const result = await recognizeOcr("base64data", "test-key");
-    expect(result).toBe("Product A 5.99\nProduct B 3.50");
+describe("sendImageToAI", () => {
+  const multiFixture = readFileSync(
+    join(__dirname, "fixtures", "ai", "multi-price.json"),
+    "utf8"
+  );
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function okText(text: string): Response {
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: async () => text,
+    } as unknown as Response;
+  }
+
+  it("POSTs to endpoint with Authorization Bearer header when apiKey set and useProxy false", async () => {
+    mockFetch.mockResolvedValueOnce(okText(multiFixture));
+
+    await sendImageToAI("AAAA", "PROMPT-X", {
+      endpoint: "https://example.test/v1/chat",
+      apiKey: "KEY",
+      model: "gpt-test",
+    });
 
     const [url, options] = mockFetch.mock.calls[0];
-    expect(url).toBe("/ocr-proxy");
+    expect(url).toBe("https://example.test/v1/chat");
     expect(options.method).toBe("POST");
+    expect(options.headers["Content-Type"]).toBe("application/json");
+    expect(options.headers["Authorization"]).toBe("Bearer KEY");
+    const body = JSON.parse(options.body);
+    expect(body.model).toBe("gpt-test");
+    expect(body.response_format).toEqual({ type: "json_object" });
   });
 
-  it("throws on HTTP error", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 403,
-      statusText: "Forbidden",
+  it("omits Authorization header when useProxy is true", async () => {
+    mockFetch.mockResolvedValueOnce(okText(multiFixture));
+
+    await sendImageToAI("AAAA", "P", {
+      endpoint: "/ai-proxy",
+      apiKey: "SHOULD-NOT-LEAK",
+      useProxy: true,
     });
 
-    await expect(recognizeOcr("data", "key")).rejects.toThrow("OCR HTTP 403");
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe("/ai-proxy");
+    expect(options.headers["Authorization"]).toBeUndefined();
   });
 
-  it("throws on OCR processing error", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        ParsedResults: [],
-        OCRExitCode: 2,
-        IsErroredOnProcessing: true,
-        ErrorMessage: "Invalid key",
-      }),
+  it("strips data:image/png;base64, prefix before embedding", async () => {
+    mockFetch.mockResolvedValueOnce(okText(multiFixture));
+
+    await sendImageToAI("data:image/png;base64,ABCDEF", "P", {
+      endpoint: "https://e.test",
+      apiKey: "k",
     });
 
-    await expect(recognizeOcr("data", "key")).rejects.toThrow("OCR error: Invalid key");
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    const imagePart = body.messages[0].content.find(
+      (c: { type: string }) => c.type === "image_url"
+    );
+    expect(imagePart.image_url.url).toBe("data:image/jpeg;base64,ABCDEF");
   });
 
-  it("throws on empty results", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        ParsedResults: [],
-        OCRExitCode: 1,
-        IsErroredOnProcessing: false,
-      }),
+  it("includes the verbatim prompt in the text content part", async () => {
+    mockFetch.mockResolvedValueOnce(okText(multiFixture));
+    const prompt = "verbatim-prompt-\u00a0-with-special-€-chars";
+
+    await sendImageToAI("RAWB64", prompt, {
+      endpoint: "https://e.test",
+      apiKey: "k",
     });
 
-    await expect(recognizeOcr("data", "key")).rejects.toThrow("OCR: no results");
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    const textPart = body.messages[0].content.find(
+      (c: { type: string }) => c.type === "text"
+    );
+    expect(textPart.text).toBe(prompt);
   });
-});
 
-describe("parseWithGemini", () => {
-  it("returns parsed prices on success", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        candidates: [{
-          content: {
-            parts: [{ text: '{"items":[{"product":"Apple","price":1.99}]}' }],
-          },
-        }],
-      }),
+  it("parses an OpenAI-style choices response into AiExtractionResult", async () => {
+    const envelope = JSON.stringify({
+      choices: [{ message: { content: multiFixture } }],
+    });
+    mockFetch.mockResolvedValueOnce(okText(envelope));
+
+    const result = await sendImageToAI("b64", "p", {
+      endpoint: "https://e.test",
+      apiKey: "k",
     });
 
-    const result = await parseWithGemini("Apple 1.99", "gemini-key");
-    expect(result.items).toHaveLength(1);
-    expect(result.items[0].product).toBe("Apple");
-    expect(result.items[0].price).toBe(1.99);
+    expect(result.version).toBe("1.0");
+    expect(result.products).toHaveLength(1);
+    expect(result.products[0].prices).toHaveLength(3);
   });
 
-  it("handles markdown-wrapped JSON", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        candidates: [{
-          content: {
-            parts: [{ text: '```json\n{"items":[{"product":"Bread","price":2.50}]}\n```' }],
-          },
-        }],
-      }),
+  it("parses a raw JSON response body", async () => {
+    mockFetch.mockResolvedValueOnce(okText(multiFixture));
+
+    const result = await sendImageToAI("b64", "p", {
+      endpoint: "https://e.test",
+      apiKey: "k",
     });
 
-    const result = await parseWithGemini("Bread 2.50", "key");
-    expect(result.items[0].product).toBe("Bread");
-    expect(result.items[0].price).toBe(2.50);
+    expect(result.products[0].name).toBe("Pasta Barilla 500g");
   });
 
-  it("throws on HTTP error", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 429,
-      statusText: "Too Many Requests",
-    });
-
-    await expect(parseWithGemini("text", "key")).rejects.toThrow("Gemini HTTP 429");
-  });
-
-  it("throws on empty candidates", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ candidates: [] }),
-    });
-
-    await expect(parseWithGemini("text", "key")).rejects.toThrow("Gemini: no response");
-  });
-
-  it("throws on null content", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        candidates: [{ content: null }],
-      }),
-    });
-
-    await expect(parseWithGemini("text", "key")).rejects.toThrow("Gemini: no response");
-  });
-
-  it("throws on malformed JSON from AI", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        candidates: [{
-          content: { parts: [{ text: "not json at all" }] },
-        }],
-      }),
-    });
-
-    await expect(parseWithGemini("text", "key")).rejects.toThrow("AI returned invalid JSON");
-  });
-
-  it("throws on empty items array", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        candidates: [{
-          content: { parts: [{ text: '{"items":[]}' }] },
-        }],
-      }),
-    });
-
-    await expect(parseWithGemini("text", "key")).rejects.toThrow("AI: no prices recognized");
-  });
-});
-
-describe("parseWithGroq", () => {
-  it("returns parsed prices on success", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        choices: [{ message: { content: '{"items":[{"product":"Milk","price":1.20}]}' } }],
-      }),
-    });
-
-    const result = await parseWithGroq("Milk 1.20", "groq-key");
-    expect(result.items).toHaveLength(1);
-    expect(result.items[0].product).toBe("Milk");
-    expect(result.items[0].price).toBe(1.20);
-  });
-
-  it("handles markdown-wrapped JSON", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        choices: [{ message: { content: '```json\n{"items":[{"product":"Eggs","price":3.00}]}\n```' } }],
-      }),
-    });
-
-    const result = await parseWithGroq("Eggs 3.00", "key");
-    expect(result.items[0].product).toBe("Eggs");
-  });
-
-  it("throws on HTTP error", async () => {
-    mockFetch.mockResolvedValueOnce({ ok: false, status: 401, statusText: "Unauthorized" });
-    await expect(parseWithGroq("text", "key")).rejects.toThrow("Groq HTTP 401");
-  });
-
-  it("throws on empty choices", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ choices: [] }),
-    });
-    await expect(parseWithGroq("text", "key")).rejects.toThrow("Groq: no response content");
-  });
-
-  it("throws on malformed JSON", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        choices: [{ message: { content: "not json" } }],
-      }),
-    });
-    await expect(parseWithGroq("text", "key")).rejects.toThrow("AI returned invalid JSON");
-  });
-
-  it("throws on empty items array", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        choices: [{ message: { content: '{"items":[]}' } }],
-      }),
-    });
-    await expect(parseWithGroq("text", "key")).rejects.toThrow("AI: no prices recognized");
-  });
-});
-
-describe("parseWithGroq", () => {
-  it("returns parsed prices on success", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        choices: [{
-          message: {
-            content: '{"items":[{"product":"Milk","price":1.20}]}',
-          },
-        }],
-      }),
-    });
-
-    const result = await parseWithGroq("Milk 1.20", "groq-key");
-    expect(result.items).toHaveLength(1);
-    expect(result.items[0].product).toBe("Milk");
-    expect(result.items[0].price).toBe(1.20);
-
-    const [, options] = mockFetch.mock.calls[0];
-    expect(options.headers.Authorization).toBe("Bearer groq-key");
-  });
-
-  it("throws on HTTP error", async () => {
+  it("throws AiExtractionError code 'http_error' on 500", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 500,
       statusText: "Internal Server Error",
-    });
+      text: async () => "boom",
+    } as unknown as Response);
 
-    await expect(parseWithGroq("text", "key")).rejects.toThrow("Groq HTTP 500");
+    await expect(
+      sendImageToAI("b64", "p", { endpoint: "https://e.test", apiKey: "k" })
+    ).rejects.toMatchObject({
+      name: "AiExtractionError",
+      code: "http_error",
+    });
   });
 
-  it("throws on empty choices", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ choices: [] }),
+  it("throws code 'timeout' when fetch never resolves within timeoutMs", async () => {
+    vi.useFakeTimers();
+
+    mockFetch.mockImplementationOnce(
+      (_url: string, init: { signal: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          init.signal.addEventListener("abort", () => {
+            const err = new Error("aborted");
+            (err as Error & { name: string }).name = "AbortError";
+            reject(err);
+          });
+        })
+    );
+
+    const promise = sendImageToAI("b64", "p", {
+      endpoint: "https://e.test",
+      apiKey: "k",
+      timeoutMs: 1000,
     });
 
-    await expect(parseWithGroq("text", "key")).rejects.toThrow("Groq: no response");
+    const assertion = expect(promise).rejects.toMatchObject({
+      name: "AiExtractionError",
+      code: "timeout",
+    });
+
+    await vi.advanceTimersByTimeAsync(1500);
+    await assertion;
   });
 
-  it("throws on null message content", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        choices: [{ message: { content: null } }],
-      }),
+  it("throws code 'network' when fetch rejects with a generic Error", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("DNS failure"));
+
+    await expect(
+      sendImageToAI("b64", "p", { endpoint: "https://e.test", apiKey: "k" })
+    ).rejects.toMatchObject({
+      name: "AiExtractionError",
+      code: "network",
+    });
+  });
+
+  it("external AbortSignal from caller triggers abort path", async () => {
+    mockFetch.mockImplementationOnce(
+      (_url: string, init: { signal: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          init.signal.addEventListener("abort", () => {
+            const err = new Error("aborted");
+            (err as Error & { name: string }).name = "AbortError";
+            reject(err);
+          });
+        })
+    );
+
+    const external = new AbortController();
+    const promise = sendImageToAI("b64", "p", {
+      endpoint: "https://e.test",
+      apiKey: "k",
+      timeoutMs: 60000,
+      signal: external.signal,
     });
 
-    await expect(parseWithGroq("text", "key")).rejects.toThrow("Groq: no response");
+    const assertion = expect(promise).rejects.toBeInstanceOf(AiExtractionError);
+    external.abort();
+    await assertion;
   });
 });

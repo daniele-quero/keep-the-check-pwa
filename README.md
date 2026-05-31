@@ -1,6 +1,6 @@
 # Keep The Check — PWA
 
-A Progressive Web App that helps you track prices while shopping. Point the camera at a price tag or receipt: the app uses OCR + AI to extract product names and prices, updating a running total in real time.
+A Progressive Web App that helps you track prices while shopping. Point the camera at a price tag or receipt: the app sends the image directly to a configurable AI vision endpoint, which returns a structured list of products and prices. You review and edit the result, then save items to a running total.
 
 ---
 
@@ -9,10 +9,14 @@ A Progressive Web App that helps you track prices while shopping. Point the came
 1. [Tech Stack](#tech-stack)
 2. [Project Structure](#project-structure)
 3. [Getting Started](#getting-started)
-4. [Source Files](#source-files)
+4. [AI Image Analysis Configuration](#ai-image-analysis-configuration)
+5. [Migration from the legacy OCR build](#migration-from-the-legacy-ocr-build)
+6. [Privacy](#privacy)
+7. [Source Files](#source-files)
    - [models.ts](#modelsts)
    - [config.ts](#configts)
    - [camera.ts](#camerats)
+   - [aiPrompt.ts](#aipromptts)
    - [api.ts](#apits)
    - [listManager.ts](#listmanagerts)
    - [ui.ts](#uits)
@@ -22,10 +26,11 @@ A Progressive Web App that helps you track prices while shopping. Point the came
    - [main.ts](#maints)
    - [modals/optionsModal.ts](#modalsoptionsmodalts)
    - [modals/addModal.ts](#modalsaddmodalts)
+   - [modals/addModalController.ts](#modalsaddmodalcontrollerts)
    - [modals/tutorialModal.ts](#modalstutorialmodalts)
-5. [Public Assets](#public-assets)
-6. [Test Suite](#test-suite)
-7. [Data Flow](#data-flow)
+8. [Public Assets](#public-assets)
+9. [Test Suite](#test-suite)
+10. [Data Flow](#data-flow)
 
 ---
 
@@ -37,9 +42,7 @@ A Progressive Web App that helps you track prices while shopping. Point the came
 | **Vite 5** | Dev server & bundler |
 | **Vitest 2** | Unit test runner |
 | **jsdom** | DOM emulation in tests |
-| **OCR Space API** | Image-to-text recognition |
-| **Google Gemini API** | AI price extraction |
-| **Groq API (Llama 3)** | AI price extraction (alternative / fallback) |
+| **AI Vision API** | Direct image-to-structured-JSON extraction (endpoint is user-configurable) |
 
 ---
 
@@ -48,20 +51,23 @@ A Progressive Web App that helps you track prices while shopping. Point the came
 ```
 keep-the-check-pwa/
 ├── index.html             # App shell — static HTML skeleton
-├── vite.config.ts         # Vite build configuration
+├── vite.config.ts         # Vite build configuration (includes /ai-proxy dev rewrite)
 ├── vitest.config.ts       # Vitest test configuration
 ├── tsconfig.json          # TypeScript compiler options
 ├── package.json           # NPM scripts and dependencies
+├── netlify.toml           # Production redirects
 ├── generateIcons.mjs      # Script to generate PWA icons with sharp
+├── .env.example           # Template env vars for a server-side AI proxy
 ├── public/
-│   ├── manifest.json      # PWA manifest (name, icons, display mode)
+│   ├── manifest.json      # PWA manifest
 │   └── sw.js              # Service Worker (network-first pass-through)
 └── src/
     ├── main.ts            # App entry point — wires everything together
     ├── models.ts          # Shared data types and factory functions
-    ├── config.ts          # Persistent configuration service
+    ├── config.ts          # Persistent configuration service (schemaVersion: 3)
     ├── camera.ts          # Camera access and image capture
-    ├── api.ts             # OCR and AI API calls
+    ├── aiPrompt.ts        # Verbatim extraction prompt + JSON-schema parsing
+    ├── api.ts             # sendImageToAI transport
     ├── listManager.ts     # Shopping list state and total logic
     ├── ui.ts              # DOM references and result item rendering
     ├── modal.ts           # Generic modal base class
@@ -69,12 +75,13 @@ keep-the-check-pwa/
     ├── yamlConfig.ts      # YAML config import/export
     ├── style.css          # Global styles
     └── modals/
-        ├── addModal.html          # Manual-add modal markup
-        ├── addModal.ts            # Manual-add modal factory
-        ├── optionsModal.html      # Options modal markup
-        ├── optionsModal.ts        # Options modal factory + tooltips
-        ├── tutorialModal.html     # Tutorial modal markup
-        └── tutorialModal.ts      # Tutorial modal factory + language switch
+        ├── addModal.html              # Add/scan modal markup
+        ├── addModal.ts                # Add modal factory
+        ├── addModalController.ts      # Scan/edit/manual flow orchestrator
+        ├── optionsModal.html          # Options modal markup
+        ├── optionsModal.ts            # Options modal factory + tooltips
+        ├── tutorialModal.html         # Tutorial modal markup
+        └── tutorialModal.ts           # Tutorial modal factory + language switch
 ```
 
 ---
@@ -92,6 +99,61 @@ npm run test:watch   # Run tests in watch mode
 
 ---
 
+## AI Image Analysis Configuration
+
+The scan pipeline sends the captured JPEG (base64) plus the verbatim extraction prompt from `src/aiPrompt.ts` to a single configurable endpoint, and expects a JSON response matching the schema declared in that file (`version`, `products[]`, `image_text`, `metadata`, `warnings`, `uncertain`).
+
+Configure the flow from the **Options** modal (or by importing a YAML file with the same keys). The following fields exist on `AppConfigData` in [src/config.ts](src/config.ts):
+
+| Field | Type | Description |
+|---|---|---|
+| `aiEndpoint` | `string` | Absolute URL of the AI vision endpoint. Ignored when `aiUseProxy` is `true`. |
+| `aiModel` | `string` | Model identifier sent in the request body (e.g. `gpt-4o-mini`). |
+| `aiApiKey` | `string` | Bearer token sent in the `Authorization` header. **Only used in direct mode** (`aiUseProxy: false`). Leave empty when using a proxy. |
+| `aiTimeoutMs` | `number` | Request timeout enforced via `AbortController`. Default `30000`. |
+| `aiUseProxy` | `boolean` | When `true`, requests are sent to the relative path `/ai-proxy` and no `Authorization` header is attached — your server-side proxy is expected to inject the real key. Default `true`. |
+| `requireManualConfirm` | `boolean` | When `true`, the editable results modal is shown before items are added to the list; when `false`, items are added immediately. Default `true`. |
+
+### Recommended: server-side proxy
+
+Keep `aiUseProxy: true` and host a small proxy (Netlify Function, Cloudflare Worker, Vite dev rewrite, etc.) that forwards `/ai-proxy` to your provider with the real API key injected from a secret. This way the key never leaves your server.
+
+[.env.example](.env.example) at the repo root lists the placeholder variables a proxy might consume (`AI_API_ENDPOINT`, `AI_API_KEY`, `AI_MODEL`). The example file contains placeholders only — never commit real keys.
+
+### Direct mode (development only)
+
+If you set `aiUseProxy: false`, the browser posts directly to `aiEndpoint` with `Authorization: Bearer <aiApiKey>`. The key is then stored in `localStorage` on the user's device. The Options modal shows a visible warning against using this mode in shared/committed configurations.
+
+### Where to set values
+
+- **Options modal** (preferred): each field has its own input. Changes are persisted to `localStorage["appConfig"]`.
+- **YAML import/export**: the Options modal exposes Import (📁) and Export (💾) buttons. The exported YAML round-trips every field listed above; see [src/yamlConfig.ts](src/yamlConfig.ts).
+
+---
+
+## Migration from the legacy OCR build
+
+Earlier releases used a two-step legacy OCR + text-parse pipeline. On the first load after upgrading, `ConfigService` auto-migrates any existing `localStorage["appConfig"]` payload:
+
+- `schemaVersion` is bumped to `3`.
+- Legacy keys are stripped: `ocrProvider`, `ocrEngine`, `ocrIsTable`, `useOcr`, `ocrApiKeys`, `aiProvider`, `aiApiKeys`.
+- Preserved fields (`currency`, `useCoupons`, `couponValue`, `couponAlertThreshold`) are kept as-is.
+- Defaults for the new `ai*` fields and `requireManualConfirm` are applied.
+- The migrated payload is written back to storage exactly once.
+
+The user must then open Options to set `aiEndpoint` / `aiModel` and either enable the proxy or paste their key — there is no automatic key transfer.
+
+---
+
+## Privacy
+
+- The captured image is **only** transmitted when the user explicitly triggers a scan.
+- It is sent **only** to the configured `aiEndpoint` (or to your `/ai-proxy` when `aiUseProxy: true`).
+- Nothing is uploaded in the background; there is no analytics or telemetry pipeline in this codebase.
+- API keys configured in direct mode are stored in `localStorage` on the user's device only.
+
+---
+
 ## Source Files
 
 ### `models.ts`
@@ -102,168 +164,81 @@ Shared data types, enums, and factory functions. Has zero dependencies on other 
 
 | Enum | Values | Purpose |
 |---|---|---|
-| `OcrProvider` | `OcrSpace` | Supported OCR backends |
-| `AiProvider` | `Gemini`, `Groq` | Supported AI backends |
 | `CurrencyCode` | `EUR`, `USD`, `GBP`, … (20 total) | ISO 4217 currency codes |
 
 #### Interfaces
 
 | Interface | Fields | Purpose |
 |---|---|---|
-| `PriceItem` | `id: number`, `product: string`, `price: number`, `quantity: number` | A single item in the shopping list |
-| `PriceResult` | `items: PriceItem[]` | The parsed response from the AI |
+| `PriceItem` | `id: number`, `product: string`, `price: number`, `quantity: number`, optional `currency: string`, `confidence: number`, `source: "ai" \| "manual" \| "legacy"` | A single item in the shopping list |
+| `PriceResult` | `items: PriceItem[]` | A batch of parsed items |
 
 #### Functions
 
-##### `generateId(): number`
-Increments and returns a module-level counter `_nextId`. Guarantees unique IDs within a session.
-
-##### `createPriceItem(product: string, price: number): PriceItem`
-Factory that builds a `PriceItem` with `quantity: 1` and a fresh ID from `generateId()`.
+- `generateId(): number` — monotonically increasing session-unique IDs.
+- `createPriceItem(product, price, opts?): PriceItem` — factory with `quantity: 1` and a fresh ID.
 
 ---
 
 ### `config.ts`
 
-Persistent application configuration stored in `localStorage`. Provides a reactive service with change listeners.
+Persistent configuration in `localStorage["appConfig"]`. See [AI Image Analysis Configuration](#ai-image-analysis-configuration) for the full field reference.
 
-#### Constants
-
-- `CURRENCIES: CurrencyEntry[]` — Array of `{ code: CurrencyCode, symbol: string }` entries covering all 20 supported currencies.
-- `DEFAULTS: AppConfigData` — The initial/fallback configuration object.
-- `STORAGE_KEY = "appConfig"` — `localStorage` key.
-
-#### Interface `AppConfigData`
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `currency` | `CurrencyCode` | `EUR` | Active currency |
-| `aiProvider` | `AiProvider` | `Gemini` | Active AI backend |
-| `ocrProvider` | `OcrProvider` | `OcrSpace` | Active OCR backend |
-| `ocrEngine` | `string` | `"1"` | OCR Space engine number (1–3) |
-| `ocrIsTable` | `boolean` | `false` | Treat image as tabular data |
-| `useOcr` | `boolean` | `true` | Enable OCR step |
-| `useCoupons` | `boolean` | `false` | Enable coupon system |
-| `couponValue` | `number` | `0` | Spend required per coupon (€) |
-| `couponAlertThreshold` | `number` | `0.2` | Alert fraction of `couponValue` (0.05–0.30) |
-| `ocrApiKeys` | `Record<string, string>` | `{ OcrSpace: "" }` | Per-provider OCR API keys |
-| `aiApiKeys` | `Record<string, string>` | `{ Gemini: "", Groq: "" }` | Per-provider AI API keys |
-
-#### Class `ConfigService`
-
-##### `constructor(storage?: Storage)`
-Accepts an optional `Storage` instance (defaults to `localStorage`). Merges any saved JSON from `STORAGE_KEY` onto `DEFAULTS`.
-
-##### `get current(): Readonly<AppConfigData>`
-Read-only snapshot of the current configuration.
-
-##### `save(partial: Partial<AppConfigData>): void`
-Merges `partial` into `data`, persists the full object to storage and fires all listeners.
-
-##### `onChanged(fn: () => void): void`
-Registers a callback invoked on every `save()`.
-
-##### `removeListener(fn: () => void): void`
-Deregisters a previously registered callback.
-
-##### `getCurrencySymbol(): string`
-Returns the Unicode symbol for the active currency, e.g. `"€"`, `"$"`. Returns `"?"` for unknown codes.
-
-##### `getAiApiKey(): string`
-Returns the API key for the currently active `aiProvider`.
-
-##### `getOcrApiKey(): string`
-Returns the API key for the currently active `ocrProvider`.
-
-#### Singleton export
-`export const config = new ConfigService()` — the single shared instance used throughout the app.
+- `DEFAULTS: AppConfigData` — initial values.
+- `STORAGE_KEY = "appConfig"`.
+- `CURRENT_SCHEMA_VERSION = 3`.
+- `ConfigService` — reactive service:
+  - `constructor(storage?)` — loads from storage and runs legacy-migration when `schemaVersion < 3` or any legacy key is present.
+  - `get current(): Readonly<AppConfigData>`.
+  - `save(partial)` — merges, persists, fires listeners.
+  - `onChanged(fn)` / `removeListener(fn)`.
+  - `getCurrencySymbol(): string`.
+- Singleton: `export const config = new ConfigService()`.
 
 ---
 
 ### `camera.ts`
 
-Wraps the browser `MediaDevices` API to access the rear camera and capture frames.
+Wraps `MediaDevices` to access the rear camera and capture frames.
 
-#### Class `CameraService`
+- `start()` / `stop()` / `get isActive()`.
+- `capture(): string | null` — full-frame JPEG base64 (quality 0.75, no data-URL prefix).
+- `captureCropped(cropRatio): string | null` — visible-rectangle aware capture that accounts for `object-fit: cover` and applies the user's crop slider.
 
-##### `constructor(video: HTMLVideoElement)`
-Stores a reference to the `<video>` element used as the live preview.
+---
 
-##### `async start(): Promise<void>`
-Requests the environment-facing camera at ideal 1920×1080, assigns the stream to `video.srcObject` and calls `play()`.
+### `aiPrompt.ts`
 
-##### `stop(): void`
-Stops all tracks, sets `stream` to `null` and clears `video.srcObject`.
+The verbatim extraction prompt and helpers that turn the AI response into `PriceItem` candidates.
 
-##### `get isActive(): boolean`
-Returns `true` if a stream exists and is still active.
-
-##### `capture(): string | null`
-Draws the current video frame to a full-resolution `<canvas>` and returns the JPEG base64 payload (quality 0.75). Returns `null` if the camera is not active.
-
-##### `captureCropped(cropRatio: number): string | null`
-More sophisticated capture that accounts for `object-fit: cover` rendering:
-1. Computes the visible source rectangle by comparing the video's aspect ratio to the container's aspect ratio.
-2. Applies the `cropRatio` (0–1) from the slider: `cropAmount = srcH × cropRatio × 0.75`, trimmed equally from top and bottom.
-3. Draws the resulting rectangle to a canvas and returns base64 JPEG.
-
-Returns `null` if the camera is not active.
+- `IMAGE_EXTRACTION_PROMPT: string` — embedded verbatim; the integration test asserts character-for-character equality.
+- Schema types: `AiExtractedProduct`, `AiExtractedPrice`, `AiBoundingBox`, `AiExtractionMetadata`, `AiExtractionResult`.
+- `parseAiExtractionJson(raw: string | object): AiExtractionResult` — strips Markdown fences, parses, validates required keys. Throws `AiExtractionError("invalid_json")` or `AiExtractionError("schema_mismatch")`.
+- `toPriceItems(result, defaultCurrency)` — picks the highest-confidence name and emits one item per `unit_price` / `total_price` entry, skipping `old_price` unless it is the only available price.
+- `AiExtractionError` — typed error with a stable `code` string.
 
 ---
 
 ### `api.ts`
 
-Pure async functions for the OCR and AI pipeline. No side effects; no DOM access.
+Single network function for the scan pipeline. No DOM access.
 
-#### Constants
+#### `sendImageToAI(base64, prompt, opts): Promise<AiExtractionResult>`
 
-| Constant | Value |
+| Option | Description |
 |---|---|
-| `OCR_ENDPOINT` | `https://api.ocr.space/parse/image` |
-| `GEMINI_ENDPOINT` | Gemini 2.0 Flash Lite generateContent URL |
-| `GROQ_ENDPOINT` | `https://api.groq.com/openai/v1/chat/completions` |
-| `PROMPT` | System prompt instructing the AI to return `{"items":[…]}` JSON |
+| `endpoint` | Absolute AI endpoint URL (used only in direct mode). |
+| `apiKey` | Bearer token (used only in direct mode). |
+| `model` | Optional model identifier. |
+| `timeoutMs` | Default 30000 ms; enforced via `AbortController`. |
+| `signal` | Optional caller-owned `AbortSignal` (composed with the timeout). |
+| `useProxy` | When `true`, posts to `/ai-proxy` without an `Authorization` header. |
 
-#### Interface `OcrOptions`
+Request body: JSON `{ model, prompt, image: { mimeType: "image/jpeg", dataBase64: base64 } }`.
 
-| Field | Type | Description |
-|---|---|---|
-| `engine?` | `string` | OCR Space engine number |
-| `isTable?` | `boolean` | Hint for tabular data |
+Response handling: tries the JSON body directly; if it doesn't match the schema, falls back to common envelope shapes (`output_text`, `choices[0].message.content`) and re-parses.
 
-#### `async recognizeOcr(base64, apiKey, language?, options?): Promise<string>`
-
-Posts a `FormData` request to OCR Space with the JPEG image encoded as a base64 data URI.
-
-| Parameter | Type | Description |
-|---|---|---|
-| `base64` | `string` | JPEG image as base64 |
-| `apiKey` | `string` | OCR Space API key |
-| `language` | `string` | Language hint (default `"ita"`) |
-| `options` | `OcrOptions` | Engine and table flag |
-
-**Returns** the raw text from `ParsedResults[0].ParsedText`.  
-**Throws** if the HTTP request fails, if `IsErroredOnProcessing` is true, or if `ParsedResults` is empty.
-
-#### `async parseWithGemini(ocrText, apiKey): Promise<PriceResult>`
-
-Sends the OCR text wrapped in `PROMPT` to the Gemini REST API.
-
-**Returns** a `PriceResult` parsed from the model's JSON response.  
-**Throws** on HTTP errors, missing candidates, or invalid/empty JSON.
-
-#### `async parseWithGroq(ocrText, apiKey): Promise<PriceResult>`
-
-Sends the OCR text to Groq's OpenAI-compatible chat completions endpoint with `llama-3.1-8b-instant`.
-
-**Returns** a `PriceResult` parsed from `choices[0].message.content`.  
-**Throws** on HTTP errors, missing choices, or invalid/empty JSON.
-
-#### `function cleanAndParse(text: string): PriceResult` *(internal)*
-
-Strips optional Markdown code fences (` ```json … ``` `) from the model's response, then calls `JSON.parse`. Validates that `result.items` is a non-empty array.
-
-**Throws** `"AI returned invalid JSON: …"` or `"AI: no prices recognized"`.
+Errors are surfaced as `AiExtractionError` with codes: `"timeout"`, `"http_<status>"`, `"invalid_json"`, `"schema_mismatch"`.
 
 ---
 
@@ -271,128 +246,42 @@ Strips optional Markdown code fences (` ```json … ``` `) from the model's resp
 
 Stateful shopping list. Tracks items, computes the total, and evaluates the coupon system.
 
-#### Class `ListManager`
+- `addItem(item)` — if `source` is missing it defaults to `"legacy"`; if `currency` is missing it defaults to `config.current.currency`.
+- `removeItem(id)`.
+- `changeQuantity(id, delta)` — clamped to `>= 1`.
+- `updateItem(id, partial)`.
+- `recalculate()` — re-runs notify without mutating state.
+- `notify()` — recomputes coupon math from `config.current` and fires `onTotalUpdated(total, coupons)` + `onCouponAlert(showAlert, remaining)`.
 
-Internal state:
-- `items: Map<number, PriceItem>` — keyed by `item.id`
-- `_total: number` — running sum of `price × quantity` for all items
-- `totalListeners`, `alertListeners` — callback arrays
-
-##### `get total(): number` / `get count(): number`
-Read-only accessors for the running total and item count.
-
-##### `onTotalUpdated(fn: TotalListener): void`
-Registers `fn(total, coupons)` called after every mutation.
-
-##### `onCouponAlert(fn: AlertListener): void`
-Registers `fn(show, remaining)` called after every mutation.
-
-##### `addItem(item: PriceItem): void`
-Inserts the item into the map, adds `price × quantity` to `_total`, calls `notify()`.
-
-##### `removeItem(id: number): void`
-Looks up the item; if found, removes it and subtracts `price × quantity` from `_total`, calls `notify()`.
-
-##### `changeQuantity(id: number, delta: number): void`
-Clamps the new quantity to `Math.max(1, quantity + delta)`, updates `_total` by the difference, calls `notify()`.
-
-##### `recalculate(): void`
-Re-fires `notify()` without mutating state. Used when config changes (e.g. coupon settings toggled).
-
-##### `notify(): void`
-Reads current config. If `useCoupons` and `couponValue > 0`:
-- `coupons = floor(total / couponValue)`
-- `remaining = nextMultiple − total`
-- `showAlert = remaining ≤ couponValue × couponAlertThreshold`
-
-Fires all `totalListeners` with `(total, coupons)` and all `alertListeners` with `(showAlert, remaining)`.
-
-#### Singleton export
-`export const listManager = new ListManager()` — the single shared instance.
+Singleton: `export const listManager = new ListManager()`.
 
 ---
 
 ### `ui.ts`
 
-DOM references and the result-item rendering function. Two concerns kept in one file: the `uiRefs` proxy object and `addResultItem`.
+Lazy DOM getters and the row-rendering helper.
 
-#### `uiRefs`
+`uiRefs` exposes every element accessed by `main.ts`, including the new AI-image option inputs: `inputAiEndpoint`, `inputAiModel`, `inputAiTimeout`, `inputAiKey`, `chkAiUseProxy`, `chkRequireConfirm`, and the in-modal scan elements (`addSpinner`, `addAiResults`, `addAnalyzeCancel`, `addRowNew`, `addSwitchManual`).
 
-A plain object where every property is a **lazy getter** that queries the DOM on each access. This avoids null-reference errors when modals haven't been injected yet.
+`addResultItem(item, isError?, onEdit?)` renders one row in `#result-list` and registers it with `listManager`.
 
-Key refs: `video`, `maskTop`, `maskBottom`, `spinner`, `alertEl`, `cashSection`, `cashValue`, `couponSection`, `couponValue`, `totalValue`, `resultList`, `cropSlider`, `btnOptions`, `btnAdd`, `btnScan`, `btnTutorial`, `selAi`, `selOcrEngine`, `selCurrency`, `chkCoupons`, `inputCouponVal`, `sliderThreshold`, `thresholdLabel`, `inputOcrKey`, `inputAiKey`, and several more for form controls.
-
-#### `addResultItem(item: PriceItem, isError?: boolean): void`
-
-Renders one row in `#result-list` and registers it with `listManager`.
-
-Steps:
-1. Creates a `div.result-item` (adds `error` class if `isError`).
-2. Appends a `span.product` with `item.product`.
-3. If **not** an error:
-   - Creates `div.qty-controls` with `−` / quantity / `+` buttons.
-   - Each button calls `listManager.changeQuantity()` and refreshes the displayed price.
-4. Appends `span.price` with `(price × quantity).toFixed(2) + symbol`.
-5. Appends a `×` remove button: calls `listManager.removeItem()` (skipped for errors) and removes the DOM element.
-6. Calls `listManager.addItem(item)` (skipped for errors).
-
-#### `populateSelect(select, values, current): void`
-
-Clears a `<select>`, populates it with `<option>` elements from `values`, and sets the selected option to `current`.
-
-#### `updateThresholdLabel(value: number, label: HTMLElement): void`
-
-Formats `value` as a percentage string (e.g. `"20%"`) and sets `label.textContent`.
+`populateSelect` and `updateThresholdLabel` are unchanged helpers.
 
 ---
 
 ### `modal.ts`
 
-Generic base class for all slide-in modals.
-
-#### Class `Modal`
-
-##### `constructor(panelId: string, overlayId: string)`
-Looks up the panel and overlay elements by ID. Registers a click listener on the overlay that calls `close()`.
-
-##### `open(): void`
-Guards against double-open. Adds `visible` to the overlay and `open` to the panel.
-
-##### `close(): void`
-Guards against double-close. Removes `open` and `visible`.
-
-##### `get opened(): boolean`
-Returns the internal `isOpen` flag.
+Generic slide-in modal base class. `open()`, `close()`, `get opened`.
 
 ---
 
 ### `tutorial.ts`
 
-Self-contained tutorial content for Italian and English, plus rendering and tooltip extraction.
+Self-contained tutorial content for Italian and English.
 
-#### Types
-
-- `Lang = "it" | "en"`
-- `TutorialInlinePart` — a plain string or `{ text, href }` link object.
-- `TutorialItem` — a single part or an array of parts (for mixed text+link lines).
-- `TutorialSection` — `{ title, items, ordered?, note? }`.
-- `TutorialContent` — `{ sections: TutorialSection[] }`.
-
-#### Data
-
-`const it: TutorialContent` and `const en: TutorialContent` — hardcoded tutorial trees with eight sections each: app purpose, scanning, manual add, item list, totals/coupons, options, Gemini API key, Groq API key, OCR Space API key.
-
-`export const translations: Record<Lang, TutorialContent>` — lookup map.
-
-#### `renderTutorial(lang: Lang): string`
-
-Converts the tutorial tree for `lang` to an HTML string. Each section becomes a `div.tutorial-section` containing an `<h3>` title, a `<ul>` or `<ol>` (based on `section.ordered`), and an optional `<p class="tutorial-note">`.
-
-Link parts are rendered as `<a target="_blank" rel="noopener noreferrer">`.
-
-#### `getOptionTooltips(lang: Lang): Record<string, string>`
-
-Finds the "Options" section in `translations[lang]` and builds a `{ label → description }` map from items of the form `"Label: description"`. Parenthesised suffixes in the label (e.g. `"Import (📁)"` → `"Import"`) are stripped with a regex.
+- `translations: Record<Lang, TutorialContent>` — IT + EN trees. The "Analisi IA dell'immagine" / "Image AI Analysis" section explains the privacy boundary (image only goes to the configured endpoint when the user scans) and how to obtain a key from the chosen provider.
+- `renderTutorial(lang)` — renders the tree to HTML.
+- `getOptionTooltips(lang)` — produces `{ label → description }` for the options modal, including `"AI Endpoint"`, `"AI Model"`, `"AI Timeout"`, `"AI Key"`, `"Use AI Proxy"`, `"Require Manual Confirm"`.
 
 ---
 
@@ -400,118 +289,90 @@ Finds the "Options" section in `translations[lang]` and builds a `{ label → de
 
 Lightweight YAML parser and serialiser for config import/export. No external YAML library is used.
 
-#### `parseSimpleYaml(text: string): Record<string, unknown>`
-
-Line-by-line parser supporting:
-- **Blank lines and `#` comments** — skipped.
-- **Flat key: value** — stored as strings.
-- **Nested map blocks** — a key with an empty value followed by indented `key: value` lines produces a `Record<string, string>`.
-
-Returns a plain object with string values (or nested string maps).
-
-#### `applyYamlToModal(data, uiRefs): void`
-
-Takes the parsed YAML object and writes matching values into the options modal form fields. Validates types and enum membership before assigning. Handles: `aiProvider`, `currency`, `useCoupons`, `couponValue`, `couponAlertThreshold`, `ocrApiKeys`, `aiApiKeys`, `ocrEngine`, `ocrIsTable`.
-
-#### `exportConfigYaml(cfg): string`
-
-Serialises the current `AppConfigData` to a YAML string. Nested maps (`ocrApiKeys`, `aiApiKeys`) are indented with two spaces.
+- `parseSimpleYaml(text)` — supports flat `key: value`, nested map blocks, blank lines, and `#` comments. Unknown keys are silently ignored, so legacy exports referencing OCR fields still load without throwing.
+- `applyYamlToModal(data, uiRefs)` — writes recognised values into the form fields, validating types and enum membership.
+- `exportConfigYaml(cfg)` — serialises the current `AppConfigData` (including all `ai*` fields and `schemaVersion`).
 
 ---
 
 ### `main.ts`
 
-Application entry point. Bootstraps all services and binds all event listeners. No business logic lives here — it delegates to the other modules.
+Application entry point. Bootstraps services, injects modals, and binds event listeners.
 
 #### Initialisation sequence
 
-1. Imports styles, creates `CameraService`, injects all three modals into the DOM, calls `initOptionTooltips()` and `initTutorialLang()`.
-2. `populateOptions()` — reads `config.current` and fills the options form fields.
-3. Registers all `listManager` listeners for UI updates (totals, coupon alert).
-4. Registers `config.onChanged(() => listManager.recalculate())` so coupon calculations refresh when settings change.
+1. Creates `CameraService`, injects all three modals, runs `initOptionTooltips()` and `initTutorialLang()`.
+2. `populateOptions()` reads `config.current` and fills the options form.
+3. Registers `listManager` listeners for totals/coupon alerts.
+4. Registers `config.onChanged(() => listManager.recalculate())`.
 
-#### Key functions
+#### `doScan()`
 
-##### `populateOptions(): void`
-Reads `config.current` and writes all values into the options form (selects, inputs, checkboxes, slider).
-
-##### `async callAiWithFallback(ocrText): Promise<PriceResult>`
-Tries the primary AI provider. If it throws, tries the other provider as a fallback (only if a key for it exists). If both fail, throws a combined error message.
-
-##### `async doScan(): Promise<void>`
-The main scan pipeline, guarded by a `scanning` boolean to prevent parallel calls:
-1. Shows spinner, disables scan button.
+1. Guards against concurrent runs with a `scanning` flag.
 2. Calls `camera.captureCropped(cropVal)`.
-3. Calls `recognizeOcr(...)`.
-4. Calls `callAiWithFallback(ocrText)`.
-5. For each item in the result, calls `createPriceItem` + `addResultItem`.
-6. On error, adds a red error row via `addResultItem(..., true)`.
-7. Always hides spinner and re-enables button.
+3. Delegates to `openAddModalForScan(base64)` in `addModalController.ts`.
 
-#### Event listeners wired up
+#### Event listeners
 
 | Element | Event | Action |
 |---|---|---|
 | `#btn-scan` | `click` | `doScan()` |
-| `#btn-options` | `click` | populate form + `optionsModal.open()` |
-| `#btn-add` | `click` | reset form + `addModal.open()` |
-| `#btn-tutorial` | `click` | `tutorialModal.open()` |
-| `#crop-slider` | `input` | update `maskTop`/`maskBottom` heights |
-| `#opt-save` | `click` | read form, call `config.save(...)`, close modal |
-| `#add-confirm` | `click` | validate, `createPriceItem`, `addResultItem`, close |
-| `#btn-opt-export` | `click` | `exportConfigYaml` → download `config.yml` |
-| `#input-import` | `change` | `FileReader` → `parseSimpleYaml` → `applyYamlToModal` |
+| `#btn-options` | `click` | populate form + open options modal |
+| `#btn-add` | `click` | `openAddModalForManual()` |
+| `#btn-tutorial` | `click` | open tutorial modal |
+| `#crop-slider` | `input` | update `maskTop` / `maskBottom` heights |
+| `#opt-save` | `click` | read form, `config.save(...)`, close |
+| `#btn-opt-export` | `click` | download `config.yml` via `exportConfigYaml` |
+| `#input-import` | `change` | `parseSimpleYaml` → `applyYamlToModal` |
 
 ---
 
 ### `modals/optionsModal.ts`
 
-#### `createOptionsModal(): Modal`
-Injects `optionsModal.html` into `document.body` (once) and returns a `Modal` instance for `#options-panel` / `#options-overlay`.
-
-#### `initOptionTooltips(): void`
-Uses **event delegation** on `#options-panel`. On every click, checks whether the target (or a closest ancestor) has class `.opt-tip`. If so, reads `data-tip`, looks up the localized description via `getOptionTooltips(lang)`, and calls `showTooltip()`.
-
-#### `showTooltip(anchor, text): void` *(internal)*
-Dismisses any existing tooltip, creates a `div.opt-tooltip`, appends it to the panel, positions it below the `?` icon using `getBoundingClientRect()`, and schedules auto-dismiss after 3 000 ms.
-
-#### `dismissTooltip(): void` *(internal)*
-Clears the pending timeout and removes the tooltip element.
+- `createOptionsModal()` — injects `optionsModal.html` once and returns a `Modal` for `#options-panel` / `#options-overlay`.
+- `initOptionTooltips()` — event-delegated tooltips driven by `data-tip` attributes; descriptions come from `getOptionTooltips(lang)`.
+- The HTML contains the new AI fields (`#opt-ai-endpoint`, `#opt-ai-model`, `#opt-ai-timeout`, `#opt-ai-key`, `#opt-ai-use-proxy`, `#opt-require-confirm`) and a visible `.opt-warning` reminding the user never to commit the API key.
 
 ---
 
 ### `modals/addModal.ts`
 
-#### `createAddModal(): Modal`
-Injects `addModal.html` (once) and returns a `Modal` for `#add-panel` / `#add-overlay`.
+`createAddModal()` injects `addModal.html` (once) and returns a `Modal` for `#add-panel` / `#add-overlay`.
+
+The HTML defines three regions controlled by the body classes `mode-analyze` / `mode-results` / `mode-manual`:
+
+- **Analyze**: `#add-spinner` ("Analisi IA in corso…") and `#add-analyze-cancel`.
+- **Results**: editable rows inside `#add-ai-results`, `#add-row-new` to append a row, and the Conferma / Annulla buttons.
+- **Manual**: single-product form (product / price / qty) reused for both manual entry and editing existing items.
+
+---
+
+### `modals/addModalController.ts`
+
+Orchestrates the modal in its three modes:
+
+- `openAddModalForScan(base64)` — opens in `mode-analyze`, calls `sendImageToAI(base64, IMAGE_EXTRACTION_PROMPT, …)` with an `AbortController` wired to `#add-analyze-cancel`, then renders editable rows (`mode-results`). When `requireManualConfirm` is `false`, items are added to `listManager` immediately and the modal closes.
+- `openAddModalForManual()` — opens directly in `mode-manual`.
+- `openAddModalForEdit(item)` — opens `mode-manual` prefilled with the item's fields.
+
+Items added via the AI rows get `source: "ai"`; items entered via the manual form get `source: "manual"`.
 
 ---
 
 ### `modals/tutorialModal.ts`
 
-#### `createTutorialModal(): Modal`
-Injects `tutorialModal.html` (once) and returns a `Modal` for `#tutorial-panel` / `#tutorial-overlay`.
-
-#### `initTutorialLang(): void`
-Reads the saved language from `localStorage` (key `"tutorialLang"`, default `"it"`), applies it, and registers click listeners on `#btn-lang-it` / `#btn-lang-en`.
-
-#### `applyLang(lang: Lang): void` *(internal)*
-Calls `renderTutorial(lang)` and sets `#tutorial-content.innerHTML`. Toggles the `lang-active` CSS class on the two language buttons.
+- `createTutorialModal()` — injects `tutorialModal.html` once.
+- `initTutorialLang()` — reads `localStorage["tutorialLang"]` (default `"it"`), applies it, and wires `#btn-lang-it` / `#btn-lang-en`.
 
 ---
 
 ## Public Assets
 
 ### `public/manifest.json`
-Standard PWA manifest. Defines app name, short name, icons (192×192 and 512×512), `display: standalone`, theme colour.
+Standard PWA manifest. Name, short name, icons (192×192 and 512×512), `display: standalone`, theme colour.
 
 ### `public/sw.js`
-Minimal Service Worker:
-- `install` — calls `skipWaiting()` to activate immediately.
-- `activate` — calls `clients.claim()` to take control of open pages.
-- `fetch` — passes all requests through to the network (no caching).
-
-The SW enables the app to be installed as a PWA but does not implement offline support.
+Minimal Service Worker: `install` (skipWaiting), `activate` (claim), `fetch` (network pass-through). The SW enables PWA installation but does not implement offline support.
 
 ---
 
@@ -519,14 +380,19 @@ The SW enables the app to be installed as a PWA but does not implement offline s
 
 All tests live in `tests/` and run with Vitest (jsdom environment).
 
-| File | Module under test | Type | Key scenarios |
-|---|---|---|---|
-| `models.test.ts` | `models.ts` | Unit | `generateId` monotonicity, `createPriceItem` fields, unique IDs |
-| `config.test.ts` | `config.ts` | Unit | Defaults, `save`/load round-trip, `onChanged`/`removeListener`, currency symbols |
-| `listManager.test.ts` | `listManager.ts` | Unit + integration | add/remove items, quantity clamping, total arithmetic, coupon logic, alert thresholds, `recalculate` |
-| `api.test.ts` | `api.ts` | Unit (mocked fetch) | OCR success/HTTP-error/processing-error, Gemini and Groq success/HTTP-error/invalid-JSON/empty-items, markdown-wrapped JSON stripping |
-| `tutorial.test.ts` | `tutorial.ts` | Unit | `renderTutorial` structure (sections, ol/ul, notes, links, IT≠EN), `getOptionTooltips` map validity, key sanitisation |
-| `yamlConfig.test.ts` | `yamlConfig.ts` | Unit | Flat values, blank lines, comments, nested blocks, CRLF, empty input, EOF flush |
+| File | Module under test | Key scenarios |
+|---|---|---|
+| `models.test.ts` | `models.ts` | `generateId` monotonicity, `createPriceItem` defaults, unique IDs |
+| `config.test.ts` | `config.ts` | Defaults, round-trips of all `ai*` fields, legacy migration to `schemaVersion: 3` |
+| `listManager.test.ts` | `listManager.ts` | Add/remove items, quantity clamping, total arithmetic, coupon math, legacy-item defaulting |
+| `aiPrompt.test.ts` | `aiPrompt.ts` | `IMAGE_EXTRACTION_PROMPT` snapshot, schema validation, fixture parsing, `toPriceItems` rules |
+| `api.test.ts` | `api.ts` | `sendImageToAI` success / envelope / proxy mode / timeout / HTTP error / invalid JSON |
+| `addModal.test.ts` | `addModalController` + HTML | Scan success → editable rows → confirm; scan error → manual fallback; `requireManualConfirm: false` auto-add |
+| `optionsModal.test.ts` | `optionsModal.ts` | Tooltip wiring, presence of new AI-image controls |
+| `tutorial.test.ts` | `tutorial.ts` | IT/EN content includes "Analisi IA" / "Image AI", no OCR references, new tooltip keys present |
+| `yamlConfig.test.ts` | `yamlConfig.ts` | Flat values, blank lines, comments, nested blocks, round-trip of new `ai*` fields, silent ignore of legacy keys |
+
+Fixtures used by `aiPrompt.test.ts` and `api.test.ts` live in `tests/fixtures/ai/`.
 
 Run all tests:
 ```bash
@@ -547,24 +413,24 @@ Camera (camera.ts)
   └─ captureCropped(cropRatio)
        │  base64 JPEG
        ▼
-recognizeOcr (api.ts)   ─── OCR Space API ──►  raw text
+openAddModalForScan (modals/addModalController.ts)
+       │  mode-analyze → spinner
+       ▼
+sendImageToAI (api.ts)  ─── /ai-proxy or aiEndpoint ──►  AiExtractionResult
        │
        ▼
-callAiWithFallback (main.ts)
-  ├─ parseWithGemini (api.ts) ─── Gemini API ──► PriceResult
-  └─ parseWithGroq   (api.ts) ─── Groq API   ──► PriceResult (fallback)
+toPriceItems (aiPrompt.ts)
+       │  editable rows in mode-results
+       ▼
+user reviews / edits / confirms
        │
        ▼
-createPriceItem (models.ts)
-       │
-       ▼
-addResultItem (ui.ts)  ──► DOM row rendered
-       │
-       ▼
-listManager.addItem (listManager.ts)
+listManager.addItem  (source: "ai" or "manual")
        │
        ├─► onTotalUpdated ──► update #total-value, #cash-value, #coupon-value
        └─► onCouponAlert  ──► update #coupon-alert banner
 ```
 
 Config changes (`config.save`) trigger `listManager.recalculate()`, which re-evaluates the coupon logic against the current total and fires all listeners again.
+
+When `requireManualConfirm` is `false`, the controller skips the editable step and adds items directly after `sendImageToAI` resolves.

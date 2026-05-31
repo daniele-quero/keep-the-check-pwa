@@ -1,4 +1,4 @@
-import { CurrencyCode, AiProvider, OcrProvider } from "./models";
+import { CurrencyCode } from "./models";
 
 export interface CurrencyEntry {
   code: CurrencyCode;
@@ -30,30 +30,42 @@ export const CURRENCIES: CurrencyEntry[] = [
 
 export interface AppConfigData {
   currency: CurrencyCode;
-  aiProvider: AiProvider;
-  ocrProvider: OcrProvider;
-  ocrEngine: string;
-  ocrIsTable: boolean;
-  useOcr: boolean;
   useCoupons: boolean;
   couponValue: number;
   couponAlertThreshold: number;
-  ocrApiKeys: Record<string, string>;
-  aiApiKeys: Record<string, string>;
+  aiEndpoint: string;
+  aiModel: string;
+  aiApiKey: string;
+  aiTimeoutMs: number;
+  aiUseProxy: boolean;
+  requireManualConfirm: boolean;
+  schemaVersion: number;
 }
+
+const CURRENT_SCHEMA_VERSION = 3;
+
+const LEGACY_KEYS_TO_STRIP = [
+  "ocrProvider",
+  "ocrEngine",
+  "ocrIsTable",
+  "useOcr",
+  "ocrApiKeys",
+  "aiProvider",
+  "aiApiKeys",
+] as const;
 
 const DEFAULTS: AppConfigData = {
   currency: CurrencyCode.EUR,
-  aiProvider: AiProvider.Gemini,
-  ocrProvider: OcrProvider.OcrSpace,
-  ocrEngine: "1",
-  ocrIsTable: false,
-  useOcr: true,
   useCoupons: false,
   couponValue: 0,
   couponAlertThreshold: 0.2,
-  ocrApiKeys: { OcrSpace: "" },
-  aiApiKeys: { Gemini: "", Groq: "" },
+  aiEndpoint: "",
+  aiModel: "gpt-4o-mini",
+  aiApiKey: "",
+  aiTimeoutMs: 30000,
+  aiUseProxy: true,
+  requireManualConfirm: true,
+  schemaVersion: CURRENT_SCHEMA_VERSION,
 };
 
 const STORAGE_KEY = "appConfig";
@@ -66,7 +78,33 @@ export class ConfigService {
   constructor(storage?: Storage) {
     this.storage = storage ?? (typeof localStorage !== "undefined" ? localStorage : undefined);
     const saved = this.storage?.getItem(STORAGE_KEY);
-    this.data = saved ? { ...DEFAULTS, ...JSON.parse(saved) } : { ...DEFAULTS };
+    if (!saved) {
+      this.data = { ...DEFAULTS };
+      return;
+    }
+    const raw = JSON.parse(saved) as Record<string, unknown>;
+    const rawVersion = typeof raw.schemaVersion === "number" ? raw.schemaVersion : 0;
+    const hasLegacyKey = LEGACY_KEYS_TO_STRIP.some((k) =>
+      Object.prototype.hasOwnProperty.call(raw, k)
+    );
+    const needsMigration = rawVersion < CURRENT_SCHEMA_VERSION || hasLegacyKey;
+
+    const clean: Record<string, unknown> = { ...raw };
+    for (const k of LEGACY_KEYS_TO_STRIP) {
+      delete clean[k];
+    }
+
+    this.data = {
+      ...DEFAULTS,
+      ...(clean as Partial<AppConfigData>),
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+    };
+
+    if (needsMigration) {
+      try {
+        this.storage?.setItem(STORAGE_KEY, JSON.stringify(this.data));
+      } catch { /* storage full or unavailable */ }
+    }
   }
 
   get current(): Readonly<AppConfigData> {
@@ -91,14 +129,6 @@ export class ConfigService {
 
   getCurrencySymbol(): string {
     return CURRENCIES.find((c) => c.code === this.data.currency)?.symbol ?? "?";
-  }
-
-  getAiApiKey(): string {
-    return this.data.aiApiKeys[this.data.aiProvider] ?? "";
-  }
-
-  getOcrApiKey(): string {
-    return this.data.ocrApiKeys[this.data.ocrProvider] ?? "";
   }
 }
 

@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "products": [
+    {
+      "id": "p1",
+      "name": null,
+      "name_confidence": 0.3,
+      "name_raw": "????",
+      "name_candidates": [
+        { "text": "Yogurt Greco", "confidence": 0.42 },
+        { "text": "Yogurt Greek", "confidence": 0.38 }
+      ],
+      "prices": [
+        {
+          "raw_text": "?,99",
+          "normalized": 0.99,
+          "currency": null,
+          "confidence": 0.4,
+          "type": "other",
+          "bounding_box": { "x": 0, "y": 0, "width": 30, "height": 20 },
+          "notes": "currency symbol not visible"
+        }
+      ],
+      "notes": "image blurry"
+    }
+  ],
+  "image_text": "???? ?,99",
+  "metadata": { "processing_ms": 300, "model": "test-model" },
+  "warnings": ["low confidence", "image blurry"],
+  "uncertain": true
+}

@@ -2,11 +2,13 @@ import "./style.css";
 import { CameraService } from "./camera";
 import { config } from "./config";
 import { listManager } from "./listManager";
-import { recognizeOcr, parseWithGemini, parseWithGroq } from "./api";
+import { sendImageToAI } from "./api";
 import { createOptionsModal, initOptionTooltips } from "./modals/optionsModal";
 import { createAddModal } from "./modals/addModal";
-import { createPriceItem, generateId, AiProvider, OcrProvider, CurrencyCode } from "./models";
-import type { PriceItem, PriceResult } from "./models";
+import { AddModalController } from "./modals/addModalController";
+import { IMAGE_EXTRACTION_PROMPT } from "./aiPrompt";
+import { createPriceItem, generateId, CurrencyCode } from "./models";
+import type { PriceItem } from "./models";
 import { uiRefs, populateSelect, updateThresholdLabel, addResultItem } from "./ui";
 import { parseSimpleYaml, applyYamlToModal, exportConfigYaml } from "./yamlConfig";
 import { createTutorialModal, initTutorialLang } from "./modals/tutorialModal";
@@ -26,17 +28,17 @@ initTutorialLang();
 
 function populateOptions(): void {
   const cfg = config.current;
-  populateSelect(uiRefs.selAi, Object.values(AiProvider), cfg.aiProvider);
   populateSelect(uiRefs.selCurrency, Object.values(CurrencyCode), cfg.currency);
-  uiRefs.inputOcrKey.value = cfg.ocrApiKeys[OcrProvider.OcrSpace] ?? "";
-  uiRefs.inputAiKey.value = cfg.aiApiKeys[cfg.aiProvider] ?? "";
-  uiRefs.selOcrEngine.value = cfg.ocrEngine;
-  uiRefs.chkOcrTable.checked = cfg.ocrIsTable;
-  uiRefs.chkUseOcr.checked = cfg.useOcr;
   uiRefs.chkCoupons.checked = cfg.useCoupons;
   uiRefs.inputCouponVal.value = cfg.couponValue.toFixed(2);
   uiRefs.sliderThreshold.value = String(cfg.couponAlertThreshold);
   updateThresholdLabel(cfg.couponAlertThreshold, uiRefs.thresholdLabel);
+  uiRefs.inputAiEndpoint.value = cfg.aiEndpoint;
+  uiRefs.inputAiModel.value = cfg.aiModel;
+  uiRefs.inputAiApiKey.value = cfg.aiApiKey;
+  uiRefs.inputAiTimeout.value = String(cfg.aiTimeoutMs);
+  uiRefs.chkAiUseProxy.checked = cfg.aiUseProxy;
+  uiRefs.chkRequireManualConfirm.checked = cfg.requireManualConfirm;
 }
 
 
@@ -65,10 +67,6 @@ uiRefs.btnOptExport.addEventListener("click", () => {
   a.download = "config.yml";
   a.click();
   URL.revokeObjectURL(url);
-});
-
-uiRefs.selAi.addEventListener("change", () => {
-  uiRefs.inputAiKey.value = config.current.aiApiKeys[uiRefs.selAi.value] ?? "";
 });
 
 
@@ -125,42 +123,29 @@ uiRefs.btnTutorial.addEventListener("click", () => {
   tutorialModal.close();
 });
 
-// ...existing code...
-
-/* ??? AI with fallback ??? */
-async function callAiWithFallback(ocrText: string): Promise<PriceResult> {
-  const primary = config.current.aiProvider;
-  const fallback = primary === AiProvider.Groq ? AiProvider.Gemini : AiProvider.Groq;
-  const primaryKey = config.getAiApiKey();
-
-  try {
-    return primary === AiProvider.Groq
-      ? await parseWithGroq(ocrText, primaryKey)
-      : await parseWithGemini(ocrText, primaryKey);
-  } catch (primaryErr) {
-    const fallbackKey = config.current.aiApiKeys[fallback] ?? "";
-    if (!fallbackKey) throw primaryErr;
-    try {
-      return fallback === AiProvider.Groq
-        ? await parseWithGroq(ocrText, fallbackKey)
-        : await parseWithGemini(ocrText, fallbackKey);
-    } catch (fallbackErr) {
-      const pMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
-      const fMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-      throw new Error(`${primary} failed: ${pMsg} | ${fallback} fallback failed: ${fMsg}`);
-    }
-  }
-}
-
 /* ??? Scan ??? */
 
 let scanning = false;
 
+const addModalController = new AddModalController({
+  sendImageToAI,
+  getConfig: () => ({
+    aiEndpoint: config.current.aiEndpoint,
+    aiApiKey: config.current.aiApiKey,
+    aiModel: config.current.aiModel,
+    aiTimeoutMs: config.current.aiTimeoutMs,
+    aiUseProxy: config.current.aiUseProxy,
+    requireManualConfirm: config.current.requireManualConfirm,
+  }),
+  addItem: (item) => addResultItem(item, false, openEditModal),
+  root: document,
+  prompt: IMAGE_EXTRACTION_PROMPT,
+  onConfirmed: () => addModal.close(),
+});
+
 async function doScan(): Promise<void> {
   if (scanning) return;
   scanning = true;
-
-  uiRefs.spinner.classList.add("active");
   uiRefs.btnScan.disabled = true;
 
   try {
@@ -168,23 +153,15 @@ async function doScan(): Promise<void> {
     const base64 = camera.captureCropped(cropVal);
     if (!base64) throw new Error("Camera capture failed");
 
-    const ocrText = await recognizeOcr(base64, config.getOcrApiKey(), "ita", {
-      engine: config.current.ocrEngine,
-      isTable: config.current.ocrIsTable,
-    });
-
-    const result = await callAiWithFallback(ocrText);
-
-    for (const item of result.items) {
-      const priceItem = createPriceItem(item.product, item.price);
-      addResultItem(priceItem, false, openEditModal);
-    }
+    addModalController.reset();
+    editingItemId = null;
+    addModal.open();
+    await addModalController.analyzeImage(base64);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     addResultItem({ id: generateId(), product: `[Error] ${msg}`, price: 0, quantity: 1 }, true);
   } finally {
     scanning = false;
-    uiRefs.spinner.classList.remove("active");
     uiRefs.btnScan.disabled = false;
   }
 }
@@ -206,20 +183,17 @@ uiRefs.sliderThreshold.addEventListener("input", () => {
 });
 
 uiRefs.btnOptOk.addEventListener("click", () => {
-  const updatedAiKeys = { ...config.current.aiApiKeys, [uiRefs.selAi.value]: uiRefs.inputAiKey.value.trim() };
-  const updatedOcrKeys = { ...config.current.ocrApiKeys, [OcrProvider.OcrSpace]: uiRefs.inputOcrKey.value.trim() };
   config.save({
-    aiProvider: uiRefs.selAi.value as AiProvider,
-    ocrProvider: OcrProvider.OcrSpace,
     currency: uiRefs.selCurrency.value as CurrencyCode,
-    ocrApiKeys: updatedOcrKeys,
-    aiApiKeys: updatedAiKeys,
-    ocrEngine: uiRefs.selOcrEngine.value,
-    ocrIsTable: uiRefs.chkOcrTable.checked,
-    useOcr: uiRefs.chkUseOcr.checked,
     useCoupons: uiRefs.chkCoupons.checked,
     couponValue: parseFloat(uiRefs.inputCouponVal.value) || 0,
     couponAlertThreshold: parseFloat(uiRefs.sliderThreshold.value) || 0.2,
+    aiEndpoint: uiRefs.inputAiEndpoint.value.trim(),
+    aiModel: uiRefs.inputAiModel.value.trim(),
+    aiApiKey: uiRefs.inputAiApiKey.value.trim(),
+    aiTimeoutMs: Math.max(1000, parseInt(uiRefs.inputAiTimeout.value, 10) || 30000),
+    aiUseProxy: uiRefs.chkAiUseProxy.checked,
+    requireManualConfirm: uiRefs.chkRequireManualConfirm.checked,
   });
   optionsModal.close();
 });
@@ -238,6 +212,7 @@ function openEditModal(item: PriceItem): void {
   uiRefs.inputPrice.value = String(item.price);
   addQty = item.quantity;
   uiRefs.addQtyDisplay.textContent = String(item.quantity);
+  addModalController.reset();
   addModal.open();
 }
 
@@ -247,6 +222,7 @@ uiRefs.btnAdd.addEventListener("click", () => {
   uiRefs.inputPrice.value = "";
   addQty = 1;
   uiRefs.addQtyDisplay.textContent = "1";
+  addModalController.reset();
   addModal.open();
 });
 

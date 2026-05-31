@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "products": [
+    {
+      "id": "p1",
+      "name": "Laptop Pro 14",
+      "name_confidence": 0.91,
+      "name_raw": "Laptop Pro 14",
+      "name_candidates": [
+        { "text": "Laptop Pro 14", "confidence": 0.91 }
+      ],
+      "prices": [
+        {
+          "raw_text": "$1,234.56",
+          "normalized": 1234.56,
+          "currency": "USD",
+          "confidence": 0.95,
+          "type": "total_price",
+          "bounding_box": { "x": 8, "y": 8, "width": 140, "height": 45 },
+          "notes": "US format"
+        }
+      ],
+      "notes": ""
+    }
+  ],
+  "image_text": "Laptop Pro 14 $1,234.56",
+  "metadata": { "processing_ms": 175, "model": "test-model" },
+  "warnings": [],
+  "uncertain": false
+}

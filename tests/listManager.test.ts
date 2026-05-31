@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { ListManager } from "../src/listManager";
-import type { PriceItem } from "../src/models";
+import { createItemFromAi, createPriceItem, type PriceItem } from "../src/models";
+import { config } from "../src/config";
 
 function makeItem(id: number, price: number, quantity = 1): PriceItem {
   return { id, product: `Item ${id}`, price, quantity };
@@ -228,5 +229,78 @@ describe("ListManager.updateItem", () => {
     lm.addItem(makeItem(2, 5, 1));
     lm.updateItem(1, "New name", 20, 1);
     expect(lm.count).toBe(2);
+  });
+});
+
+describe("ListManager item-shape migration", () => {
+  let lm: ListManager;
+
+  beforeEach(() => {
+    lm = new ListManager();
+  });
+
+  it("legacy items without source get source='legacy' and a non-null currency", () => {
+    const legacy: PriceItem = { id: 1, product: "Old", price: 5, quantity: 1 };
+    lm.addItem(legacy);
+    expect(legacy.source).toBe("legacy");
+    expect(legacy.currency).toBe(config.current.currency);
+    expect(legacy.currency).not.toBeNull();
+  });
+
+  it("AI-sourced items round-trip currency, confidence and source", () => {
+    const aiItem: PriceItem = {
+      id: 2,
+      product: "Coffee",
+      price: 3.5,
+      quantity: 1,
+      currency: "USD",
+      confidence: 0.92,
+      source: "ai",
+    };
+    lm.addItem(aiItem);
+    expect(aiItem.source).toBe("ai");
+    expect(aiItem.currency).toBe("USD");
+    expect(aiItem.confidence).toBe(0.92);
+    expect(lm.total).toBeCloseTo(3.5);
+  });
+
+  it("does not overwrite an explicitly set currency (including non-default)", () => {
+    const item: PriceItem = {
+      id: 3,
+      product: "Tea",
+      price: 2,
+      quantity: 1,
+      currency: "GBP",
+      source: "manual",
+    };
+    lm.addItem(item);
+    expect(item.currency).toBe("GBP");
+    expect(item.source).toBe("manual");
+  });
+
+  it("createPriceItem produces source='manual'", () => {
+    const item = createPriceItem("Bread", 1.2);
+    expect(item.source).toBe("manual");
+    expect(item.quantity).toBe(1);
+  });
+
+  it("createItemFromAi produces source='ai' with currency/confidence", () => {
+    const item = createItemFromAi({
+      name: "Milk",
+      price: 1.99,
+      currency: "EUR",
+      confidence: 0.81,
+    });
+    expect(item.source).toBe("ai");
+    expect(item.currency).toBe("EUR");
+    expect(item.confidence).toBeCloseTo(0.81);
+    expect(item.product).toBe("Milk");
+    expect(item.quantity).toBe(1);
+  });
+
+  it("createItemFromAi defaults name to empty string when null", () => {
+    const item = createItemFromAi({ name: null, price: 4, currency: null, confidence: 0.5 });
+    expect(item.product).toBe("");
+    expect(item.currency).toBeNull();
   });
 });

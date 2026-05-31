@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ConfigService, type AppConfigData } from "../src/config";
-import { CurrencyCode, AiProvider, OcrProvider } from "../src/models";
+import { CurrencyCode } from "../src/models";
 
 function createMockStorage(): Storage {
   const store: Record<string, string> = {};
@@ -25,7 +25,6 @@ describe("ConfigService", () => {
 
   it("starts with defaults", () => {
     expect(svc.current.currency).toBe(CurrencyCode.EUR);
-    expect(svc.current.aiProvider).toBe(AiProvider.Gemini);
     expect(svc.current.useCoupons).toBe(false);
     expect(svc.current.couponAlertThreshold).toBe(0.2);
   });
@@ -44,13 +43,12 @@ describe("ConfigService", () => {
   it("loads saved values on init", () => {
     storage.setItem("appConfig", JSON.stringify({
       currency: "GBP",
-      aiProvider: "Groq",
       couponValue: 10,
+      schemaVersion: 3,
     }));
 
     const svc2 = new ConfigService(storage);
     expect(svc2.current.currency).toBe(CurrencyCode.GBP);
-    expect(svc2.current.aiProvider).toBe(AiProvider.Groq);
     expect(svc2.current.couponValue).toBe(10);
   });
 
@@ -87,24 +85,18 @@ describe("ConfigService", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Dynamic round-trip: every AppConfigData field must survive save → reload
-// ---------------------------------------------------------------------------
-// Non-default test value for every field of AppConfigData.
-// If a field is ever added to AppConfigData, the "covers every field" test
-// below will fail with a clear diff, forcing the map to be updated.
 const OPTIONS_TEST_VALUES: AppConfigData = {
   currency: CurrencyCode.USD,
-  aiProvider: AiProvider.Groq,
-  ocrProvider: OcrProvider.OcrSpace,
-  ocrEngine: "3",
-  ocrIsTable: true,
-  useOcr: false,
   useCoupons: true,
   couponValue: 50,
   couponAlertThreshold: 0.1,
-  ocrApiKeys: { OcrSpace: "ocr-test-key" },
-  aiApiKeys: { Gemini: "gemini-test-key", Groq: "groq-test-key" },
+  aiEndpoint: "https://example.invalid/v1/chat/completions",
+  aiModel: "gpt-4o",
+  aiApiKey: "sk-test-key",
+  aiTimeoutMs: 12345,
+  aiUseProxy: false,
+  requireManualConfirm: false,
+  schemaVersion: 3,
 };
 
 describe("ConfigService – options modal dynamic round-trip", () => {
@@ -127,11 +119,9 @@ describe("ConfigService – options modal dynamic round-trip", () => {
       const svc = new ConfigService(storage);
       svc.save({ [key]: value } as Partial<AppConfigData>);
 
-      // Verify the raw JSON in storage contains the expected value
       const persisted = JSON.parse(storage.getItem("appConfig")!) as Record<string, unknown>;
       expect(persisted[key]).toEqual(value);
 
-      // Verify a fresh ConfigService instance reads the persisted value
       const svc2 = new ConfigService(storage);
       expect(svc2.current[key]).toEqual(value);
     }
@@ -150,5 +140,109 @@ describe("ConfigService – options modal dynamic round-trip", () => {
     for (const [key, value] of Object.entries(OPTIONS_TEST_VALUES) as [keyof AppConfigData, AppConfigData[keyof AppConfigData]][]) {
       expect(svc2.current[key]).toEqual(value);
     }
+  });
+});
+
+describe("ConfigService – AI-image fields and schema migration", () => {
+  let storage: Storage;
+
+  beforeEach(() => {
+    storage = createMockStorage();
+  });
+
+  it("empty storage yields defaults with schemaVersion 3", () => {
+    const svc = new ConfigService(storage);
+    expect(svc.current.aiEndpoint).toBe("");
+    expect(svc.current.aiModel).toBe("gpt-4o-mini");
+    expect(svc.current.aiApiKey).toBe("");
+    expect(svc.current.aiTimeoutMs).toBe(30000);
+    expect(svc.current.aiUseProxy).toBe(true);
+    expect(svc.current.requireManualConfirm).toBe(true);
+    expect(svc.current.schemaVersion).toBe(3);
+  });
+
+  it("loading a legacy v2 blob strips legacy keys, fills defaults and stamps schemaVersion 3", () => {
+    const legacy = {
+      currency: "USD",
+      aiProvider: "Groq",
+      ocrProvider: "OcrSpace",
+      ocrEngine: "3",
+      ocrIsTable: true,
+      useOcr: true,
+      ocrApiKeys: { OcrSpace: "legacy-ocr-key" },
+      aiApiKeys: { Gemini: "g", Groq: "q" },
+      useCoupons: true,
+      couponValue: 7,
+      schemaVersion: 2,
+    };
+    storage.setItem("appConfig", JSON.stringify(legacy));
+
+    const svc = new ConfigService(storage);
+
+    expect(svc.current.currency).toBe(CurrencyCode.USD);
+    expect(svc.current.useCoupons).toBe(true);
+    expect(svc.current.couponValue).toBe(7);
+    expect(svc.current.schemaVersion).toBe(3);
+
+    const loaded = svc.current as unknown as Record<string, unknown>;
+    expect(loaded.aiProvider).toBeUndefined();
+    expect(loaded.ocrProvider).toBeUndefined();
+    expect(loaded.ocrEngine).toBeUndefined();
+    expect(loaded.ocrIsTable).toBeUndefined();
+    expect(loaded.useOcr).toBeUndefined();
+    expect(loaded.ocrApiKeys).toBeUndefined();
+    expect(loaded.aiApiKeys).toBeUndefined();
+
+    const persisted = JSON.parse(storage.getItem("appConfig")!) as Record<string, unknown>;
+    expect(persisted.schemaVersion).toBe(3);
+    expect(persisted.aiProvider).toBeUndefined();
+    expect(persisted.ocrProvider).toBeUndefined();
+    expect(persisted.ocrEngine).toBeUndefined();
+    expect(persisted.ocrIsTable).toBeUndefined();
+    expect(persisted.useOcr).toBeUndefined();
+    expect(persisted.ocrApiKeys).toBeUndefined();
+    expect(persisted.aiApiKeys).toBeUndefined();
+  });
+
+  it("migration persists exactly once on load (no extra writes)", () => {
+    const legacy = { currency: "USD", aiApiKeys: { Gemini: "x" } };
+    storage.setItem("appConfig", JSON.stringify(legacy));
+    const setItemSpy = vi.spyOn(storage, "setItem");
+
+    new ConfigService(storage);
+
+    expect(setItemSpy).toHaveBeenCalledTimes(1);
+    expect(setItemSpy).toHaveBeenCalledWith("appConfig", expect.stringContaining("\"schemaVersion\":3"));
+    const persistedArg = setItemSpy.mock.calls[0][1];
+    expect(persistedArg).not.toContain("aiApiKeys");
+  });
+
+  it("loading an already-v3 config is a no-op (no re-persist on read)", () => {
+    const v3 = {
+      currency: "EUR",
+      useCoupons: false,
+      couponValue: 0,
+      couponAlertThreshold: 0.2,
+      aiEndpoint: "https://api.example/v1",
+      aiModel: "gpt-4o",
+      aiApiKey: "sk-abc",
+      aiTimeoutMs: 15000,
+      aiUseProxy: false,
+      requireManualConfirm: false,
+      schemaVersion: 3,
+    } as AppConfigData;
+    storage.setItem("appConfig", JSON.stringify(v3));
+    const setItemSpy = vi.spyOn(storage, "setItem");
+
+    const svc = new ConfigService(storage);
+
+    expect(setItemSpy).not.toHaveBeenCalled();
+    expect(svc.current.aiEndpoint).toBe("https://api.example/v1");
+    expect(svc.current.aiModel).toBe("gpt-4o");
+    expect(svc.current.aiApiKey).toBe("sk-abc");
+    expect(svc.current.aiTimeoutMs).toBe(15000);
+    expect(svc.current.aiUseProxy).toBe(false);
+    expect(svc.current.requireManualConfirm).toBe(false);
+    expect(svc.current.schemaVersion).toBe(3);
   });
 });

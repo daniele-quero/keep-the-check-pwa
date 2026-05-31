@@ -1,0 +1,48 @@
+{
+  "version": "1.0",
+  "products": [
+    {
+      "id": "p1",
+      "name": "Pasta Barilla 500g",
+      "name_confidence": 0.92,
+      "name_raw": "Pasta Barilla 500g",
+      "name_candidates": [
+        { "text": "Pasta Barilla 500g", "confidence": 0.92 }
+      ],
+      "prices": [
+        {
+          "raw_text": "1,49 €",
+          "normalized": 1.49,
+          "currency": "EUR",
+          "confidence": 0.94,
+          "type": "old_price",
+          "bounding_box": { "x": 10, "y": 20, "width": 70, "height": 25 },
+          "notes": "barrato"
+        },
+        {
+          "raw_text": "0,99 €",
+          "normalized": 0.99,
+          "currency": "EUR",
+          "confidence": 0.96,
+          "type": "discount_price",
+          "bounding_box": { "x": 10, "y": 60, "width": 70, "height": 35 },
+          "notes": ""
+        },
+        {
+          "raw_text": "1,98 €/kg",
+          "normalized": 1.98,
+          "currency": "EUR",
+          "confidence": 0.88,
+          "type": "price_per_unit",
+          "bounding_box": { "x": 10, "y": 110, "width": 90, "height": 20 },
+          "notes": "al chilo"
+        }
+      ],
+      "notes": ""
+    }
+  ],
+  "image_text": "Pasta Barilla 500g 1,49 € 0,99 € 1,98 €/kg",
+  "metadata": { "processing_ms": 210, "model": "test-model" },
+  "warnings": [],
+  "uncertain": false
+}

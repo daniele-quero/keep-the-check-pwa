@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "products": [
+    {
+      "id": "p1",
+      "name": "TV LED 55\"",
+      "name_confidence": 0.9,
+      "name_raw": "TV LED 55\"",
+      "name_candidates": [
+        { "text": "TV LED 55\"", "confidence": 0.9 }
+      ],
+      "prices": [
+        {
+          "raw_text": "1.234,56 €",
+          "normalized": 1234.56,
+          "currency": "EUR",
+          "confidence": 0.93,
+          "type": "total_price",
+          "bounding_box": { "x": 5, "y": 5, "width": 150, "height": 50 },
+          "notes": "formato EU"
+        }
+      ],
+      "notes": ""
+    }
+  ],
+  "image_text": "TV LED 55\" 1.234,56 €",
+  "metadata": { "processing_ms": 180, "model": "test-model" },
+  "warnings": [],
+  "uncertain": false
+}

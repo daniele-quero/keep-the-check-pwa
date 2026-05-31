@@ -1,43 +1,40 @@
 <div class="modal-overlay" id="options-overlay"></div>
 <div class="modal-panel" id="options-panel">
   <h2>Options</h2>
-  <div class="modal-3col">
-    <div class="field-group">
-      <label>AI Client <span class="opt-tip" data-tip="AI Client">&#x2753;</span></label>
-      <select id="opt-ai"></select>
-    </div>
-    <div class="field-group">
-      <label>OCR Engine <span class="opt-tip" data-tip="OCR Engine">&#x2753;</span></label>
-      <select id="opt-ocr-engine">
-        <option value="1">1</option>
-        <option value="2">2</option>
-        <option value="3">3</option>
-      </select>
-    </div>
-    <div class="field-group">
-      <label>Currency <span class="opt-tip" data-tip="Currency">&#x2753;</span></label>
-      <select id="opt-currency"></select>
-    </div>
-  </div>
   <div class="modal-row">
-    <label>OCR Key: <span class="opt-tip" data-tip="OCR Key">&#x2753;</span></label>
-    <input type="password" id="opt-ocr-key" placeholder="OCR API key" autocomplete="off">
+    <label>Currency: <span class="opt-tip" data-tip="Currency">&#x2753;</span></label>
+    <select id="opt-currency"></select>
   </div>
-  <div class="modal-row">
-    <label>AI Key: <span class="opt-tip" data-tip="AI Key">&#x2753;</span></label>
-    <input type="password" id="opt-ai-key" placeholder="AI API key" autocomplete="off">
-  </div>
-  <div class="modal-3col">
-    <div class="field-group">
-      <label>Use OCR <span class="opt-tip" data-tip="Use OCR">&#x2753;</span></label>
-      <input type="checkbox" id="opt-use-ocr" checked disabled>
+  <fieldset class="ai-image-section">
+    <legend>AI Image Analysis</legend>
+    <div class="modal-row">
+      <label>Endpoint: <span class="opt-tip" data-tip="AI Image Endpoint">&#x2753;</span></label>
+      <input type="text" id="opt-ai-endpoint" data-config-key="aiEndpoint" placeholder="https://api.example.com/v1/...">
     </div>
-    <div class="field-group">
-      <label>isTable <span class="opt-tip" data-tip="isTable">&#x2753;</span></label>
-      <input type="checkbox" id="opt-ocr-table">
+    <div class="modal-row">
+      <label>Model: <span class="opt-tip" data-tip="AI Image Model">&#x2753;</span></label>
+      <input type="text" id="opt-ai-model" data-config-key="aiModel" placeholder="gpt-4o-mini">
     </div>
-    <div class="field-group"></div>
-  </div>
+    <div class="modal-row">
+      <label>API Key: <span class="opt-tip" data-tip="AI Image Key">&#x2753;</span></label>
+      <input type="password" id="opt-ai-api-key" data-config-key="aiApiKey" placeholder="AI image API key" autocomplete="off">
+    </div>
+    <div class="modal-3col">
+      <div class="field-group">
+        <label>Timeout (ms) <span class="opt-tip" data-tip="AI Image Timeout">&#x2753;</span></label>
+        <input type="number" id="opt-ai-timeout" data-config-key="aiTimeoutMs" min="1000" step="500">
+      </div>
+      <div class="field-group">
+        <label>Use Proxy <span class="opt-tip" data-tip="Use Image Proxy">&#x2753;</span></label>
+        <input type="checkbox" id="opt-ai-use-proxy" data-config-key="aiUseProxy">
+      </div>
+      <div class="field-group">
+        <label>Require Confirm <span class="opt-tip" data-tip="Require Manual Confirm">&#x2753;</span></label>
+        <input type="checkbox" id="opt-require-manual-confirm" data-config-key="requireManualConfirm">
+      </div>
+    </div>
+    <p class="opt-warning">⚠️ Non salvare la chiave API in repository. Usa un proxy server quando possibile. La chiave è memorizzata solo nel tuo browser.</p>
+  </fieldset>
   <div class="modal-3col">
     <div class="field-group">
       <label>Use Coupons <span class="opt-tip" data-tip="Use Coupons">&#x2753;</span></label>

@@ -1,6 +1,5 @@
 // Simple YAML import/export for config
-import { AiProvider, OcrProvider, CurrencyCode } from "./models";
-import { config } from "./config";
+import { CurrencyCode } from "./models";
 import { updateThresholdLabel } from "./ui";
 
 export function parseSimpleYaml(text: string): Record<string, unknown> {
@@ -40,10 +39,6 @@ export function parseSimpleYaml(text: string): Record<string, unknown> {
 }
 
 export function applyYamlToModal(data: Record<string, unknown>, uiRefs: any): void {
-  if (typeof data.aiProvider === "string" && Object.values(AiProvider).includes(data.aiProvider as AiProvider)) {
-    uiRefs.selAi.value = data.aiProvider as string;
-    uiRefs.inputAiKey.value = config.current.aiApiKeys[data.aiProvider as string] ?? "";
-  }
   if (typeof data.currency === "string" && Object.values(CurrencyCode).includes(data.currency as CurrencyCode)) {
     uiRefs.selCurrency.value = data.currency as string;
   }
@@ -61,43 +56,38 @@ export function applyYamlToModal(data: Record<string, unknown>, uiRefs: any): vo
       updateThresholdLabel(v, uiRefs.thresholdLabel);
     }
   }
-  if (typeof data.ocrApiKeys === "object" && data.ocrApiKeys !== null) {
-    const keys = data.ocrApiKeys as Record<string, string>;
-    const provider = uiRefs.selOcr.value;
-    if (keys[provider]) uiRefs.inputOcrKey.value = keys[provider];
+  if (typeof data.aiEndpoint === "string") {
+    uiRefs.inputAiEndpoint.value = data.aiEndpoint;
   }
-  if (typeof data.aiApiKeys === "object" && data.aiApiKeys !== null) {
-    const keys = data.aiApiKeys as Record<string, string>;
-    const provider = uiRefs.selAi.value;
-    if (keys[provider]) uiRefs.inputAiKey.value = keys[provider];
+  if (typeof data.aiModel === "string") {
+    uiRefs.inputAiModel.value = data.aiModel;
   }
-  if (typeof data.ocrEngine === "string" && ["1", "2", "3"].includes(data.ocrEngine)) {
-    uiRefs.selOcrEngine.value = data.ocrEngine;
+  if (typeof data.aiApiKey === "string") {
+    uiRefs.inputAiApiKey.value = data.aiApiKey;
   }
-  if (typeof data.ocrIsTable === "string") {
-    uiRefs.chkOcrTable.checked = data.ocrIsTable === "true";
+  if (typeof data.aiTimeoutMs === "string") {
+    const v = parseInt(data.aiTimeoutMs, 10);
+    if (!isNaN(v) && v >= 1000) uiRefs.inputAiTimeout.value = String(v);
+  }
+  if (typeof data.aiUseProxy === "string") {
+    uiRefs.chkAiUseProxy.checked = data.aiUseProxy === "true";
+  }
+  if (typeof data.requireManualConfirm === "string") {
+    uiRefs.chkRequireManualConfirm.checked = data.requireManualConfirm === "true";
   }
 }
 
 export function exportConfigYaml(cfg: any): string {
-  const ocrKeys = Object.entries(cfg.ocrApiKeys)
-    .map(([k, v]) => `  ${k}: "${v}"`).join("\n");
-  const aiKeys = Object.entries(cfg.aiApiKeys)
-    .map(([k, v]) => `  ${k}: "${v}"`).join("\n");
-
   return [
     `currency: ${cfg.currency}`,
-    `aiProvider: ${cfg.aiProvider}`,
-    `ocrProvider: ${cfg.ocrProvider}`,
-    `ocrEngine: ${cfg.ocrEngine}`,
-    `ocrIsTable: ${cfg.ocrIsTable}`,
-    `useOcr: ${cfg.useOcr}`,
     `useCoupons: ${cfg.useCoupons}`,
     `couponValue: ${cfg.couponValue.toFixed(2)}`,
     `couponAlertThreshold: ${cfg.couponAlertThreshold}`,
-    `ocrApiKeys:`,
-    ocrKeys,
-    `aiApiKeys:`,
-    aiKeys,
+    `aiEndpoint: ${cfg.aiEndpoint ?? ""}`,
+    `aiModel: ${cfg.aiModel ?? ""}`,
+    `aiApiKey: ""`,
+    `aiTimeoutMs: ${cfg.aiTimeoutMs ?? 30000}`,
+    `aiUseProxy: ${cfg.aiUseProxy ?? false}`,
+    `requireManualConfirm: ${cfg.requireManualConfirm ?? true}`,
   ].join("\n") + "\n";
 }
