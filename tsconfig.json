@@ -11,5 +11,6 @@
     "rootDir": ".",
     "types": ["vitest/globals", "vite/client"]
   },
-  "include": ["src", "tests"]
+  "include": ["src"],
+  "exclude": ["tests", "node_modules"]
 }
