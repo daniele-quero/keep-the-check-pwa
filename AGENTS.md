@@ -7,12 +7,35 @@ Use it as a behavior guide, and link to existing docs instead of duplicating con
 ## First Commands
 - Install dependencies: npm install
 - Start dev server: npm run dev
+- Start full local app + Netlify Functions: npx --yes netlify@26.1.0 dev --offline
 - Run full test suite: npm test
 - Run tests in watch mode: npm run test:watch
 - Build production bundle: npm run build
 - Preview production bundle: npm run preview
 
 Detailed setup and architecture overview: [README.md](README.md)
+
+## Local Run Protocol (Mandatory)
+When the user asks to "run locally", agents must follow this protocol:
+
+1. Ensure dependencies are installed:
+	- `npm install`
+2. Ensure `.env` exists and contains at least one valid `AI_KEY_*` value.
+3. Start the app with Netlify dev (not plain Vite) so Functions are available:
+	- `npx --yes netlify@26.1.0 dev --offline`
+4. Confirm local Functions are reachable:
+	- `http://localhost:8888/.netlify/functions/ai-providers` should return HTTP 200.
+5. Share the correct manual access URL with the user:
+	- `http://localhost:8888`
+
+Important behavior rule:
+- Do not open the browser automatically.
+- Do not use browser-opening tools unless the user explicitly requests browser automation.
+- Always provide the localhost link and let the user open it manually.
+
+Clarification:
+- `npm run dev` serves only the frontend on port 5173.
+- For end-to-end local behavior (including AI proxy), use Netlify dev and port 8888.
 
 ## High-Value Files
 - App entrypoint and wiring: [src/main.ts](src/main.ts)
