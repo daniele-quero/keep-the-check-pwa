@@ -44,10 +44,9 @@ describe("optionsModal AI Image Analysis section", () => {
     }
   });
 
-  it("renders a security note about keys staying on the server", () => {
+  it("does not render the optional security note", () => {
     const warning = document.querySelector(".opt-warning") as HTMLElement | null;
-    expect(warning).not.toBeNull();
-    expect(warning!.textContent ?? "").toMatch(/server|proxy|chiave/i);
+    expect(warning).toBeNull();
   });
 });
 
