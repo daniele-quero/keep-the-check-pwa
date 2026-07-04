@@ -28,9 +28,9 @@ const it: TutorialContent = {
       title: "📷 Scansione",
       items: [
         "Premi il pulsante SCAN (icona fotocamera) per acquisire un frame dalla fotocamera.",
-        "Usa lo slider per regolare il crop verticale dell'immagine: le maschere nere indicano la zona esclusa dalla scansione.",
+        "Usa lo slider per regolare il crop verticale dell'immagine: le maschere pesca indicano la zona esclusa dalla scansione.",
         "L'immagine ritagliata viene inviata automaticamente all'IA configurata, che restituisce uno o più risultati strutturati (prodotto, prezzo, valuta).",
-        "Si apre una modale dove puoi rivedere e modificare i risultati prima di confermare: aggiungi, modifica o elimina righe.",
+        "Se serve revisione manuale o fallback, si apre una modale dove puoi rivedere e modificare i risultati: aggiungi, modifica o elimina righe.",
         "Premi Conferma per salvare gli articoli nella lista; Annulla per scartare il risultato senza modificare la lista.",
       ],
       note: "🔒 Privacy: l'immagine lascia il dispositivo solo quando avvii la scansione e viene inviata esclusivamente all'endpoint IA che hai configurato nelle Opzioni (oppure al proxy se l'hai abilitato). Nessun altro server riceve l'immagine.",
@@ -110,9 +110,9 @@ const en: TutorialContent = {
       title: "📷 Scanning",
       items: [
         "Press the SCAN button (camera icon) to capture a frame from the camera.",
-        "Use the slider to crop the image vertically: the black masks show the excluded area.",
+        "Use the slider to crop the image vertically: the peach masks show the excluded area.",
         "The cropped image is automatically sent to the configured AI, which returns one or more structured results (product, price, currency).",
-        "A modal opens where you can review and edit the results before confirming: add, edit or delete rows.",
+        "When manual review or fallback is needed, a modal opens where you can review and edit the results: add, edit or delete rows.",
         "Press Confirm to save the items to the list; Cancel to discard the result without modifying the list.",
       ],
       note: "🔒 Privacy: the image leaves your device only when you trigger a scan and is sent exclusively to the AI endpoint you configured in Options (or to your proxy if enabled). No other server receives the image.",

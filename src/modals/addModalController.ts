@@ -50,6 +50,28 @@ const FALLBACK_MESSAGE_NO_ENDPOINT =
   "L'analisi IA non è configurata. Inserisci i dati manualmente.";
 const STATUS_MESSAGE_ANALYZING = "Analisi IA in corso…";
 
+export function shouldAutoConfirmAiResult(
+  result: AiExtractionResult,
+  requireManualConfirm: boolean
+): boolean {
+  if (requireManualConfirm) return false;
+
+  const singleProduct = result.products.length === 1;
+  const noZeroConfidence = result.products.every((p) =>
+    p.prices.every((pr) => (pr.confidence ?? 0) > 0)
+  );
+
+  return singleProduct && noZeroConfidence;
+}
+
+export function shouldOpenAddModalAfterScan(
+  result: AiExtractionResult | null,
+  requireManualConfirm: boolean
+): boolean {
+  if (!result) return true;
+  return !shouldAutoConfirmAiResult(result, requireManualConfirm);
+}
+
 export class AddModalController {
   private readonly deps: AddModalControllerDeps;
   private wired = false;
@@ -106,10 +128,7 @@ export class AddModalController {
 
   async analyzeImage(imageBase64: string): Promise<AiExtractionResult | null> {
     const cfg = this.deps.getConfig();
-    if (!cfg.hasAnyProviderWithKey) {
-      this.showFallback(FALLBACK_MESSAGE_NO_ENDPOINT);
-      return null;
-    }
+    const likelyNoProviderConfigured = !cfg.hasAnyProviderWithKey;
 
     this.showAnalyzing();
 
@@ -124,21 +143,19 @@ export class AddModalController {
           : undefined,
       });
     } catch {
-      this.showFallback(FALLBACK_MESSAGE_DEFAULT);
+      this.showFallback(
+        likelyNoProviderConfigured
+          ? FALLBACK_MESSAGE_NO_ENDPOINT
+          : FALLBACK_MESSAGE_DEFAULT
+      );
       return null;
     }
 
     this.hideStatus();
     this.renderResults(result);
 
-    if (cfg.requireManualConfirm === false) {
-      const singleProduct = result.products.length === 1;
-      const noZeroConfidence = result.products.every((p) =>
-        p.prices.every((pr) => (pr.confidence ?? 0) > 0)
-      );
-      if (singleProduct && noZeroConfidence) {
-        this.confirmAndAdd();
-      }
+    if (shouldAutoConfirmAiResult(result, cfg.requireManualConfirm)) {
+      this.confirmAndAdd();
     }
 
     return result;

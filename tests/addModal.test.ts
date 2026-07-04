@@ -3,6 +3,8 @@ import { createAddModal } from "../src/modals/addModal";
 import {
   AddModalController,
   type AddModalControllerConfig,
+  shouldAutoConfirmAiResult,
+  shouldOpenAddModalAfterScan,
 } from "../src/modals/addModalController";
 import { IMAGE_EXTRACTION_PROMPT, type AiExtractionResult } from "../src/aiPrompt";
 import type { PriceItem } from "../src/models";
@@ -60,6 +62,38 @@ function defaultCfg(overrides: Partial<AddModalControllerConfig> = {}): AddModal
 
 beforeEach(() => {
   document.body.innerHTML = "";
+});
+
+describe("scan decision helpers", () => {
+  it("auto-confirms when manual confirm is off and a single product has non-zero confidences", () => {
+    const result = makeResult();
+    expect(shouldAutoConfirmAiResult(result, false)).toBe(true);
+  });
+
+  it("does not auto-confirm when manual confirm is on", () => {
+    const result = makeResult();
+    expect(shouldAutoConfirmAiResult(result, true)).toBe(false);
+  });
+
+  it("does not auto-confirm when at least one price has zero confidence", () => {
+    const result = makeResult();
+    result.products[0].prices[0].confidence = 0;
+    expect(shouldAutoConfirmAiResult(result, false)).toBe(false);
+  });
+
+  it("opens add modal after scan when AI result is missing", () => {
+    expect(shouldOpenAddModalAfterScan(null, false)).toBe(true);
+  });
+
+  it("keeps add modal closed when auto-confirm criteria are met", () => {
+    const result = makeResult();
+    expect(shouldOpenAddModalAfterScan(result, false)).toBe(false);
+  });
+
+  it("opens add modal when manual confirm is required", () => {
+    const result = makeResult();
+    expect(shouldOpenAddModalAfterScan(result, true)).toBe(true);
+  });
 });
 
 describe("createAddModal", () => {
@@ -173,9 +207,9 @@ describe("AddModalController.analyzeImage", () => {
     expect(manual.hidden).toBe(false);
   });
 
-  it("skips AI call and shows fallback when no provider has a key", async () => {
+  it("still attempts AI call when provider-key cache is false", async () => {
     createAddModal();
-    const sendImageToAI = vi.fn();
+    const sendImageToAI = vi.fn(async () => makeResult());
     const ctrl = new AddModalController({
       sendImageToAI,
       getConfig: () => defaultCfg({ hasAnyProviderWithKey: false }),
@@ -186,7 +220,28 @@ describe("AddModalController.analyzeImage", () => {
 
     await ctrl.analyzeImage("X");
 
-    expect(sendImageToAI).not.toHaveBeenCalled();
+    expect(sendImageToAI).toHaveBeenCalledTimes(1);
+    const status = document.getElementById("add-ai-status") as HTMLElement;
+    const results = document.getElementById("add-ai-results") as HTMLElement;
+    expect(status.hidden).toBe(true);
+    expect(results.hidden).toBe(false);
+  });
+
+  it("shows 'non configurata' fallback when key cache is false and AI call fails", async () => {
+    createAddModal();
+    const sendImageToAI = vi.fn(async () => {
+      throw new Error("boom");
+    });
+    const ctrl = new AddModalController({
+      sendImageToAI,
+      getConfig: () => defaultCfg({ hasAnyProviderWithKey: false }),
+      addItem: vi.fn(),
+      root: document,
+      prompt: IMAGE_EXTRACTION_PROMPT,
+    });
+
+    await ctrl.analyzeImage("X");
+
     const status = document.getElementById("add-ai-status") as HTMLElement;
     const text = document.getElementById("add-ai-status-text") as HTMLElement;
     expect(status.hidden).toBe(false);

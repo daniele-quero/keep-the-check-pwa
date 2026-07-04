@@ -15,7 +15,10 @@ import {
   type ProviderOption,
 } from "./modals/optionsModal";
 import { createAddModal } from "./modals/addModal";
-import { AddModalController } from "./modals/addModalController";
+import {
+  AddModalController,
+  shouldOpenAddModalAfterScan,
+} from "./modals/addModalController";
 import { IMAGE_EXTRACTION_PROMPT } from "./aiPrompt";
 import { createPriceItem, generateId, CurrencyCode } from "./models";
 import type { PriceItem } from "./models";
@@ -169,6 +172,7 @@ async function doScan(): Promise<void> {
   if (scanning) return;
   scanning = true;
   uiRefs.btnScan.disabled = true;
+  uiRefs.spinner.classList.add("active");
 
   try {
     const cropVal = parseFloat(uiRefs.cropSlider.value);
@@ -177,14 +181,18 @@ async function doScan(): Promise<void> {
 
     addModalController.reset();
     editingItemId = null;
-    addModal.open();
-    await addModalController.analyzeImage(base64);
+    const result = await addModalController.analyzeImage(base64);
+
+    if (shouldOpenAddModalAfterScan(result, config.current.requireManualConfirm)) {
+      addModal.open();
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     addResultItem({ id: generateId(), product: `[Error] ${msg}`, price: 0, quantity: 1 }, true);
   } finally {
     scanning = false;
     uiRefs.btnScan.disabled = false;
+    uiRefs.spinner.classList.remove("active");
   }
 }
 

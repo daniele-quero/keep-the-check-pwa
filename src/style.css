@@ -7,13 +7,19 @@
 }
 
 :root {
-  --bg: #000;
-  --text: #fff;
-  --green: #22c55e;
-  --alert-orange: #f59e0b;
-  --modal-blue: #38bdf8;
-  --modal-orange: #f97316;
-  --overlay: rgba(0, 0, 0, 0.6);
+  --bg: #f6c5a7;
+  --text: #462314;
+  --green: #2f8f5b;
+  --alert-orange: #b85a2b;
+  --modal-blue: #f2dbc6;
+  --modal-orange: #efc3a2;
+  --overlay: rgba(67, 33, 20, 0.45);
+  --surface: #ffe9da;
+  --button-bg: #8f4d34;
+  --button-text: #fff5ec;
+  --slider-track: #c8845f;
+  --slider-thumb: #7a3f2a;
+  --camera-mask: rgba(246, 197, 167, 0.84);
   --slide-duration: 0.5s;
 }
 
@@ -41,6 +47,8 @@ html, body {
   aspect-ratio: 16 / 9;
   overflow: hidden;
   position: relative;
+  padding: 10px 12px 8px;
+  background: linear-gradient(180deg, rgba(255, 246, 235, 0.5), rgba(250, 199, 166, 0.3));
   flex-shrink: 0;
 }
 
@@ -49,15 +57,18 @@ html, body {
   height: 100%;
   object-fit: cover;
   display: block;
+  border-radius: 14px;
+  border: 2px solid rgba(122, 63, 42, 0.28);
+  box-shadow: 0 8px 18px rgba(90, 41, 22, 0.16);
 }
 
 #camera-mask {
   position: absolute;
   bottom: 0;
-  left: 0;
-  right: 0;
+  left: 12px;
+  right: 12px;
   height: 0%;
-  background: var(--bg);
+  background: var(--camera-mask);
   pointer-events: none;
   transition: height 0.15s ease;
 }
@@ -65,10 +76,10 @@ html, body {
 #camera-mask-top {
   position: absolute;
   top: 0;
-  left: 0;
-  right: 0;
+  left: 12px;
+  right: 12px;
   height: 0%;
-  background: var(--bg);
+  background: var(--camera-mask);
   pointer-events: none;
   transition: height 0.15s ease;
 }
@@ -80,8 +91,8 @@ html, body {
   transform: translate(-50%, -50%);
   width: 48px;
   height: 48px;
-  border: 4px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
+  border: 4px solid rgba(122, 63, 42, 0.25);
+  border-top-color: var(--button-bg);
   border-radius: 50%;
   display: none;
 }
@@ -163,7 +174,7 @@ html, body {
   justify-content: space-between;
   align-items: center;
   padding: 10px 0;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid rgba(107, 56, 33, 0.22);
 }
 
 .result-item .product {
@@ -198,9 +209,9 @@ html, body {
 }
 
 .qty-btn {
-  background: none;
-  border: 1px solid #555;
-  color: #fff;
+  background: rgba(255, 247, 240, 0.55);
+  border: 1px solid rgba(122, 63, 42, 0.35);
+  color: var(--text);
   width: 24px;
   height: 24px;
   border-radius: 4px;
@@ -214,7 +225,7 @@ html, body {
 }
 
 .qty-btn:active {
-  background: #333;
+  background: rgba(143, 77, 52, 0.25);
 }
 
 .qty-value {
@@ -240,7 +251,7 @@ html, body {
   appearance: none;
   width: 75%;
   height: 4px;
-  background: #555;
+  background: var(--slider-track);
   border-radius: 2px;
   outline: none;
 }
@@ -250,7 +261,17 @@ html, body {
   appearance: none;
   width: 20px;
   height: 20px;
-  background: #fff;
+  background: var(--slider-thumb);
+  border: 2px solid var(--button-text);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+#crop-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  background: var(--slider-thumb);
+  border: 2px solid var(--button-text);
   border-radius: 50%;
   cursor: pointer;
 }
@@ -277,10 +298,26 @@ html, body {
   max-width: 56px;
   font-size: 1.4em;
   cursor: pointer;
-  background: #fff;
-  color: #000;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  background: var(--button-bg);
+  color: var(--button-text);
+  box-shadow: 0 3px 10px rgba(82, 36, 20, 0.28);
   transition: transform 0.1s;
+}
+
+#btn-tutorial {
+  background: #7f5a49;
+}
+
+#btn-options {
+  background: #9b6b4f;
+}
+
+#btn-add {
+  background: #b2623f;
+}
+
+#btn-scan {
+  background: #8f3f29;
 }
 
 .action-btn:active {
@@ -316,7 +353,7 @@ html, body {
   padding: 24px 20px;
   z-index: 101;
   transition: left var(--slide-duration) ease;
-  color: #000;
+  color: var(--text);
 }
 
 .modal-panel.open {
@@ -376,9 +413,9 @@ html, body {
 }
 
 .add-qty-btn {
-  background: rgba(0, 0, 0, 0.15);
-  border: 1px solid rgba(0, 0, 0, 0.25);
-  color: #000;
+  background: rgba(143, 77, 52, 0.16);
+  border: 1px solid rgba(122, 63, 42, 0.35);
+  color: var(--text);
   width: 32px;
   height: 32px;
   border-radius: 6px;
@@ -392,7 +429,7 @@ html, body {
 }
 
 .add-qty-btn:active {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(143, 77, 52, 0.3);
 }
 
 .add-qty-display {
@@ -430,11 +467,11 @@ html, body {
 .modal-row textarea {
   flex: 1;
   padding: 8px 10px;
-  border: 1px solid rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(122, 63, 42, 0.3);
   border-radius: 6px;
   font-size: 0.95em;
-  background: #fff;
-  color: #000;
+  background: var(--surface);
+  color: var(--text);
   box-sizing: border-box;
   max-width: 100%;
 }
@@ -479,11 +516,11 @@ html, body {
 .modal-3col .field-group input {
   width: 100%;
   padding: 6px;
-  border: 1px solid rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(122, 63, 42, 0.3);
   border-radius: 6px;
   font-size: 0.85em;
-  background: #fff;
-  color: #000;
+  background: var(--surface);
+  color: var(--text);
 }
 
 /* ??? Modal Buttons ??? */
@@ -501,9 +538,9 @@ html, body {
   border: none;
   font-size: 1.3em;
   cursor: pointer;
-  background: #fff;
-  color: #000;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  background: var(--button-bg);
+  color: var(--button-text);
+  box-shadow: 0 3px 8px rgba(82, 36, 20, 0.25);
   transition: transform 0.1s;
   display: flex;
   align-items: center;
@@ -524,8 +561,8 @@ html, body {
   font-size: 0.6em;
   line-height: 1;
   border-radius: 50%;
-  background: rgba(0,0,0,0.15);
-  color: #000;
+  background: rgba(122, 63, 42, 0.2);
+  color: var(--text);
   cursor: pointer;
   vertical-align: middle;
   margin-left: 3px;
@@ -537,8 +574,8 @@ html, body {
   z-index: 200;
   max-width: 80%;
   padding: 8px 10px;
-  background: #fff;
-  color: #222;
+  background: var(--surface);
+  color: var(--text);
   border-radius: 6px;
   box-shadow: 0 2px 10px rgba(0,0,0,0.25);
   font-size: 0.82em;
@@ -554,7 +591,7 @@ html, body {
 
 /* ✦ Tutorial Modal ✦ */
 #tutorial-panel {
-  background: #c8f7c5;
+  background: #f3d9c5;
   max-height: 85vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -569,10 +606,10 @@ html, body {
   justify-content: space-between;
   position: sticky;
   top: 0;
-  background: #c8f7c5;
+  background: #f3d9c5;
   z-index: 1;
   padding-bottom: 8px;
-  border-bottom: 1px solid #a0d9a0;
+  border-bottom: 1px solid #d8b39a;
   margin-bottom: 12px;
 }
 
@@ -598,12 +635,12 @@ html, body {
 }
 
 .lang-btn.lang-active {
-  border-color: #2e7d32;
+  border-color: #8f4d34;
 }
 
 .tutorial-content {
   flex: 1;
-  color: #1a1a1a;
+  color: #412214;
   font-size: 0.92em;
   line-height: 1.5;
 }
@@ -615,7 +652,7 @@ html, body {
 .tutorial-section h3 {
   font-size: 1em;
   margin: 0 0 6px 0;
-  color: #1b5e20;
+  color: #7a3f2a;
 }
 
 .tutorial-section ul,
@@ -635,7 +672,7 @@ html, body {
 .tutorial-note {
   font-size: 0.88em;
   margin: 6px 0 0 0;
-  color: #2d4a2d;
+  color: #6a3b27;
   font-style: italic;
 }
 
@@ -644,7 +681,7 @@ html, body {
 }
 
 .tutorial-section a {
-  color: #1565c0;
+  color: #8a2f32;
   text-decoration: underline;
   word-break: break-all;
 }
@@ -652,10 +689,10 @@ html, body {
 .tutorial-footer {
   position: sticky;
   bottom: 0;
-  background: #c8f7c5;
+  background: #f3d9c5;
   padding: 10px 0 12px;
   display: flex;
   justify-content: center;
-  border-top: 1px solid #a0d9a0;
+  border-top: 1px solid #d8b39a;
   margin-top: 4px;
 }
