@@ -41,16 +41,15 @@ describe("providerCatalog", () => {
         "openrouter",
         "huggingface",
         "xai-grok",
-        "cerebras",
       ])
     );
   });
 
-  it("getVisionProviders excludes text-only providers (cerebras)", () => {
+  it("getVisionProviders returns only vision-capable providers", () => {
     const visionIds = getVisionProviders().map((e) => e.id);
-    expect(visionIds).not.toContain("cerebras");
     expect(visionIds).toContain("google-gemini");
     expect(visionIds).toContain("groq");
+    expect(visionIds).toContain("xai-grok");
   });
 
   it("openrouter carries attribution extra headers", () => {

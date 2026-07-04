@@ -131,9 +131,8 @@ Providers are defined server-side in [src/providerCatalog.ts](src/providerCatalo
 | `openrouter` | `https://openrouter.ai/api/v1/chat/completions` | `meta-llama/llama-3.2-11b-vision-instruct:free` | `AI_KEY_OPENROUTER` | ✓ | ✓ |
 | `huggingface` | `https://router.huggingface.co/v1/chat/completions` | `Qwen/Qwen2.5-VL-7B-Instruct` | `AI_KEY_HUGGINGFACE` | ✓ | ✗ |
 | `xai-grok` | `https://api.x.ai/v1/chat/completions` | `grok-2-vision-1212` | `AI_KEY_XAI_GROK` | ✓ | ✓ |
-| `cerebras` | `https://api.cerebras.ai/v1/chat/completions` | `llama-3.3-70b` | `AI_KEY_CEREBRAS` | ✗ | ✓ |
 
-All entries use `temperature: 0` and `max_tokens: 1024`. Only vision-capable providers (`supportsVision: true`) are offered for image analysis; `cerebras` is registry-only and excluded from the vision fallback pool.
+All entries use `temperature: 0` and `max_tokens: 1024`. Only vision-capable providers (`supportsVision: true`) are offered for image analysis.
 
 ### Setting the keys (Netlify)
 

@@ -102,17 +102,6 @@ export const PROVIDER_CATALOG: ProviderCatalogEntry[] = [
     temperature: DEFAULT_TEMPERATURE,
     maxTokens: DEFAULT_MAX_TOKENS,
   },
-  {
-    id: "cerebras",
-    name: "Cerebras",
-    endpoint: "https://api.cerebras.ai/v1/chat/completions",
-    model: "llama-3.3-70b",
-    envKey: "AI_KEY_CEREBRAS",
-    supportsVision: false,
-    jsonMode: true,
-    temperature: DEFAULT_TEMPERATURE,
-    maxTokens: DEFAULT_MAX_TOKENS,
-  },
 ];
 
 export function getCatalogEntry(id: string): ProviderCatalogEntry | undefined {

@@ -9,7 +9,6 @@ const SAMPLE_PROVIDERS: ProviderOption[] = [
   { id: "google-gemini", name: "Google Gemini", supportsVision: true, hasKey: true },
   { id: "groq", name: "Groq", supportsVision: true, hasKey: false },
   { id: "mistral", name: "Mistral", supportsVision: true, hasKey: true },
-  { id: "cerebras", name: "Cerebras", supportsVision: false, hasKey: true },
 ];
 
 describe("optionsModal AI Image Analysis section", () => {
@@ -65,7 +64,6 @@ describe("populateModelDropdown", () => {
     populateModelDropdown(select, SAMPLE_PROVIDERS);
     const values = Array.from(select.options).map((o) => o.value);
     expect(values).toEqual(["google-gemini", "groq", "mistral"]);
-    expect(values).not.toContain("cerebras");
   });
 
   it("disables options for providers without a key and marks them (no key)", () => {
