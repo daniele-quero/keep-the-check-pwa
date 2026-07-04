@@ -14,6 +14,39 @@ export function createOptionsModal(): Modal {
   return new Modal("options-panel", "options-overlay");
 }
 
+export interface ProviderOption {
+  id: string;
+  name: string;
+  supportsVision: boolean;
+  hasKey: boolean;
+}
+
+/**
+ * Populate the AI model dropdown from the server-provided provider list.
+ * Only vision-capable providers are listed. Providers without a configured
+ * server key are rendered as visible-but-disabled options.
+ */
+export function populateModelDropdown(
+  select: HTMLSelectElement,
+  providers: ProviderOption[],
+  selectedId?: string | null
+): void {
+  select.innerHTML = "";
+  for (const provider of providers) {
+    if (!provider.supportsVision) continue;
+    const opt = document.createElement("option");
+    opt.value = provider.id;
+    opt.textContent = provider.hasKey
+      ? provider.name
+      : `${provider.name} (no key)`;
+    opt.disabled = !provider.hasKey;
+    if (provider.hasKey && provider.id === selectedId) {
+      opt.selected = true;
+    }
+    select.appendChild(opt);
+  }
+}
+
 export function initOptionTooltips(): void {
   const panel = document.getElementById("options-panel");
   if (!panel) return;

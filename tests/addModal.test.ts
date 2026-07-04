@@ -49,11 +49,10 @@ function makeResult(
 
 function defaultCfg(overrides: Partial<AddModalControllerConfig> = {}): AddModalControllerConfig {
   return {
-    aiEndpoint: "https://example.test/ai",
-    aiApiKey: "k",
-    aiModel: "m",
+    proxyEndpoint: "/.netlify/functions/ai-proxy",
+    selectedProviderId: "groq",
+    hasAnyProviderWithKey: true,
     aiTimeoutMs: 30000,
-    aiUseProxy: false,
     requireManualConfirm: true,
     ...overrides,
   };
@@ -174,12 +173,12 @@ describe("AddModalController.analyzeImage", () => {
     expect(manual.hidden).toBe(false);
   });
 
-  it("skips AI call and shows fallback when aiEndpoint is empty", async () => {
+  it("skips AI call and shows fallback when no provider has a key", async () => {
     createAddModal();
     const sendImageToAI = vi.fn();
     const ctrl = new AddModalController({
       sendImageToAI,
-      getConfig: () => defaultCfg({ aiEndpoint: "" }),
+      getConfig: () => defaultCfg({ hasAnyProviderWithKey: false }),
       addItem: vi.fn(),
       root: document,
       prompt: IMAGE_EXTRACTION_PROMPT,
@@ -192,6 +191,57 @@ describe("AddModalController.analyzeImage", () => {
     const text = document.getElementById("add-ai-status-text") as HTMLElement;
     expect(status.hidden).toBe(false);
     expect(text.textContent).toContain("non è configurata");
+  });
+
+  it("routes through the proxy endpoint with useProxy and X-Provider-Id header", async () => {
+    createAddModal();
+    const sendImageToAI = vi.fn(async () => makeResult());
+    const ctrl = new AddModalController({
+      sendImageToAI,
+      getConfig: () => defaultCfg(),
+      addItem: vi.fn(),
+      root: document,
+      prompt: IMAGE_EXTRACTION_PROMPT,
+    });
+
+    await ctrl.analyzeImage("BASE64");
+
+    expect(sendImageToAI).toHaveBeenCalledTimes(1);
+    const opts = (sendImageToAI.mock.calls[0] as unknown as [
+      string,
+      string,
+      {
+        endpoint: string;
+        useProxy?: boolean;
+        apiKey?: string;
+        extraHeaders?: Record<string, string>;
+      }
+    ])[2];
+    expect(opts.endpoint).toBe("/.netlify/functions/ai-proxy");
+    expect(opts.useProxy).toBe(true);
+    expect(opts.apiKey).toBeUndefined();
+    expect(opts.extraHeaders).toEqual({ "X-Provider-Id": "groq" });
+  });
+
+  it("omits the X-Provider-Id header when no provider is selected", async () => {
+    createAddModal();
+    const sendImageToAI = vi.fn(async () => makeResult());
+    const ctrl = new AddModalController({
+      sendImageToAI,
+      getConfig: () => defaultCfg({ selectedProviderId: undefined }),
+      addItem: vi.fn(),
+      root: document,
+      prompt: IMAGE_EXTRACTION_PROMPT,
+    });
+
+    await ctrl.analyzeImage("BASE64");
+
+    const opts = (sendImageToAI.mock.calls[0] as unknown as [
+      string,
+      string,
+      { extraHeaders?: Record<string, string> }
+    ])[2];
+    expect(opts.extraHeaders).toBeUndefined();
   });
 });
 

@@ -1,113 +1,101 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { createOptionsModal } from "../src/modals/optionsModal";
+import {
+  createOptionsModal,
+  populateModelDropdown,
+  type ProviderOption,
+} from "../src/modals/optionsModal";
+
+const SAMPLE_PROVIDERS: ProviderOption[] = [
+  { id: "google-gemini", name: "Google Gemini", supportsVision: true, hasKey: true },
+  { id: "groq", name: "Groq", supportsVision: true, hasKey: false },
+  { id: "mistral", name: "Mistral", supportsVision: true, hasKey: true },
+  { id: "cerebras", name: "Cerebras", supportsVision: false, hasKey: true },
+];
 
 describe("optionsModal AI Image Analysis section", () => {
-  const providerIds = [
-    "huggingface",
-    "cloudflare",
-    "fireworks",
-    "mistral",
-    "replicate",
-  ] as const;
-
   beforeEach(() => {
     document.body.innerHTML = "";
     createOptionsModal();
   });
 
-  it("renders all AI image inputs with stable ids", () => {
-    expect(document.getElementById("opt-ai-endpoint")).toBeInstanceOf(HTMLInputElement);
-    expect(document.getElementById("opt-ai-model")).toBeInstanceOf(HTMLInputElement);
-    expect(document.getElementById("opt-ai-api-key")).toBeInstanceOf(HTMLInputElement);
-    expect(document.getElementById("opt-ai-timeout")).toBeInstanceOf(HTMLInputElement);
-    expect(document.getElementById("opt-ai-use-proxy")).toBeInstanceOf(HTMLInputElement);
-    expect(document.getElementById("opt-require-manual-confirm")).toBeInstanceOf(HTMLInputElement);
+  it("renders a single model dropdown (select) with a stable id", () => {
+    const model = document.getElementById("opt-ai-model");
+    expect(model).toBeInstanceOf(HTMLSelectElement);
   });
 
-  it("uses the correct input types and constraints", () => {
-    const endpoint = document.getElementById("opt-ai-endpoint") as HTMLInputElement;
-    const model = document.getElementById("opt-ai-model") as HTMLInputElement;
-    const apiKey = document.getElementById("opt-ai-api-key") as HTMLInputElement;
-    const timeout = document.getElementById("opt-ai-timeout") as HTMLInputElement;
-    const useProxy = document.getElementById("opt-ai-use-proxy") as HTMLInputElement;
-    const requireConfirm = document.getElementById("opt-require-manual-confirm") as HTMLInputElement;
-
-    expect(endpoint.type).toBe("text");
-    expect(model.type).toBe("text");
-    expect(apiKey.type).toBe("password");
-    expect(apiKey.getAttribute("autocomplete")).toBe("off");
-    expect(timeout.type).toBe("number");
-    expect(timeout.min).toBe("1000");
-    expect(timeout.step).toBe("500");
-    expect(useProxy.type).toBe("checkbox");
-    expect(requireConfirm.type).toBe("checkbox");
+  it("keeps the require-manual-confirm checkbox", () => {
+    const confirm = document.getElementById("opt-require-manual-confirm");
+    expect(confirm).toBeInstanceOf(HTMLInputElement);
+    expect((confirm as HTMLInputElement).type).toBe("checkbox");
   });
 
-  it("tags every AI image input with the matching data-config-key", () => {
-    const pairs: Array<[string, string]> = [
-      ["opt-ai-endpoint", "aiEndpoint"],
-      ["opt-ai-model", "aiModel"],
-      ["opt-ai-api-key", "aiApiKey"],
-      ["opt-ai-timeout", "aiTimeoutMs"],
-      ["opt-ai-use-proxy", "aiUseProxy"],
-      ["opt-require-manual-confirm", "requireManualConfirm"],
-    ];
-    for (const [id, key] of pairs) {
-      const el = document.getElementById(id) as HTMLElement;
-      expect(el.dataset.configKey).toBe(key);
+  it("no longer exposes endpoint, api key, timeout or use-proxy inputs", () => {
+    expect(document.getElementById("opt-ai-endpoint")).toBeNull();
+    expect(document.getElementById("opt-ai-api-key")).toBeNull();
+    expect(document.getElementById("opt-ai-timeout")).toBeNull();
+    expect(document.getElementById("opt-ai-use-proxy")).toBeNull();
+  });
+
+  it("no longer renders any provider fallback cards or key inputs", () => {
+    expect(document.querySelector(".ai-provider-section")).toBeNull();
+    expect(document.querySelector(".provider-card")).toBeNull();
+    for (const id of ["huggingface", "cloudflare", "fireworks", "mistral", "replicate"]) {
+      expect(document.getElementById(`opt-provider-${id}-api-key`)).toBeNull();
+      expect(document.getElementById(`opt-provider-${id}-endpoint`)).toBeNull();
     }
   });
 
-  it("renders an inline security warning about not committing API keys", () => {
+  it("renders a security note about keys staying on the server", () => {
     const warning = document.querySelector(".opt-warning") as HTMLElement | null;
     expect(warning).not.toBeNull();
-    expect(warning!.textContent ?? "").toMatch(/proxy|repository|chiave/i);
+    expect(warning!.textContent ?? "").toMatch(/server|proxy|chiave/i);
+  });
+});
+
+describe("populateModelDropdown", () => {
+  let select: HTMLSelectElement;
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    createOptionsModal();
+    select = document.getElementById("opt-ai-model") as HTMLSelectElement;
   });
 
-  it("renders provider fallback controls for all configured providers", () => {
-    for (const id of providerIds) {
-      expect(document.getElementById(`opt-provider-${id}-enabled`)).toBeInstanceOf(
-        HTMLInputElement
-      );
-      expect(document.getElementById(`opt-provider-${id}-use-proxy`)).toBeInstanceOf(
-        HTMLInputElement
-      );
-      expect(document.getElementById(`opt-provider-${id}-priority`)).toBeInstanceOf(
-        HTMLInputElement
-      );
-      expect(document.getElementById(`opt-provider-${id}-timeout`)).toBeInstanceOf(
-        HTMLInputElement
-      );
-      expect(document.getElementById(`opt-provider-${id}-endpoint`)).toBeInstanceOf(
-        HTMLInputElement
-      );
-      expect(document.getElementById(`opt-provider-${id}-model`)).toBeInstanceOf(
-        HTMLInputElement
-      );
-      expect(document.getElementById(`opt-provider-${id}-api-key`)).toBeInstanceOf(
-        HTMLInputElement
-      );
-    }
+  it("renders one option per vision-capable provider (excludes text-only)", () => {
+    populateModelDropdown(select, SAMPLE_PROVIDERS);
+    const values = Array.from(select.options).map((o) => o.value);
+    expect(values).toEqual(["google-gemini", "groq", "mistral"]);
+    expect(values).not.toContain("cerebras");
   });
 
-  it("uses numeric constraints and hidden-api-key fields for providers", () => {
-    for (const id of providerIds) {
-      const priority = document.getElementById(
-        `opt-provider-${id}-priority`
-      ) as HTMLInputElement;
-      const timeout = document.getElementById(
-        `opt-provider-${id}-timeout`
-      ) as HTMLInputElement;
-      const apiKey = document.getElementById(
-        `opt-provider-${id}-api-key`
-      ) as HTMLInputElement;
+  it("disables options for providers without a key and marks them (no key)", () => {
+    populateModelDropdown(select, SAMPLE_PROVIDERS);
+    const groq = Array.from(select.options).find((o) => o.value === "groq")!;
+    expect(groq.disabled).toBe(true);
+    expect(groq.textContent).toContain("(no key)");
 
-      expect(priority.type).toBe("number");
-      expect(priority.min).toBe("1");
-      expect(timeout.type).toBe("number");
-      expect(timeout.min).toBe("1000");
-      expect(apiKey.type).toBe("password");
-      expect(apiKey.getAttribute("autocomplete")).toBe("off");
-    }
+    const gemini = Array.from(select.options).find((o) => o.value === "google-gemini")!;
+    expect(gemini.disabled).toBe(false);
+    expect(gemini.textContent).toBe("Google Gemini");
+  });
+
+  it("preselects the current selection when it has a key", () => {
+    populateModelDropdown(select, SAMPLE_PROVIDERS, "mistral");
+    expect(select.value).toBe("mistral");
+  });
+
+  it("does not select a keyless provider even if it is the current selection", () => {
+    populateModelDropdown(select, SAMPLE_PROVIDERS, "groq");
+    const groq = Array.from(select.options).find((o) => o.value === "groq")!;
+    expect(groq.selected).toBe(false);
+  });
+
+  it("replaces previous options on re-populate", () => {
+    populateModelDropdown(select, SAMPLE_PROVIDERS);
+    populateModelDropdown(select, [
+      { id: "openrouter", name: "OpenRouter", supportsVision: true, hasKey: true },
+    ]);
+    const values = Array.from(select.options).map((o) => o.value);
+    expect(values).toEqual(["openrouter"]);
   });
 });

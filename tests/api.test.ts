@@ -5,6 +5,7 @@ import * as api from "../src/api";
 import { sendImageToAI } from "../src/api";
 import { AiExtractionError } from "../src/aiPrompt";
 import type { ProviderConfig } from "../src/config";
+import { PROXY_ENDPOINT } from "../src/config";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -338,5 +339,67 @@ describe("sendImageToAI", () => {
     expect(body.model).toBe("meta/meta-llama-3.2-11b-vision-instruct");
     expect(body.input.prompt).toBe("PROMPT");
     expect(body.input.image).toBe("data:image/jpeg;base64,ABC123");
+  });
+});
+
+describe("sendImageToAI – proxy transport", () => {
+  const multiFixture = readFileSync(
+    join(__dirname, "fixtures", "ai", "multi-price.json"),
+    "utf8"
+  );
+
+  // Use a fresh module instance so provider cooldown state from earlier tests
+  // (fake timers) does not leak into these single-provider proxy calls.
+  let sendImageToAIFresh: typeof sendImageToAI;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    const mod = await import("../src/api");
+    sendImageToAIFresh = mod.sendImageToAI;
+  });
+
+  function okText(text: string): Response {
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: async () => text,
+    } as unknown as Response;
+  }
+
+  it("posts to the proxy endpoint forwarding X-Provider-Id and no Authorization header", async () => {
+    mockFetch.mockResolvedValueOnce(okText(multiFixture));
+
+    await sendImageToAIFresh("AAAA", "PROMPT", {
+      endpoint: PROXY_ENDPOINT,
+      apiKey: "SHOULD-NOT-LEAK",
+      useProxy: true,
+      extraHeaders: { "X-Provider-Id": "groq" },
+    });
+
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe(PROXY_ENDPOINT);
+    expect(options.headers["X-Provider-Id"]).toBe("groq");
+    expect(options.headers["Authorization"]).toBeUndefined();
+  });
+
+  it("surfaces a proxy 502 as an http_error", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 502,
+      statusText: "Bad Gateway",
+      text: async () => JSON.stringify({ error: "all_providers_failed" }),
+    } as unknown as Response);
+
+    await expect(
+      sendImageToAIFresh("AAAA", "PROMPT", {
+        endpoint: PROXY_ENDPOINT,
+        useProxy: true,
+        extraHeaders: { "X-Provider-Id": "groq" },
+      })
+    ).rejects.toMatchObject({
+      name: "AiExtractionError",
+      code: "http_error",
+    });
   });
 });

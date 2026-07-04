@@ -56,22 +56,6 @@ export function applyYamlToModal(data: Record<string, unknown>, uiRefs: any): vo
       updateThresholdLabel(v, uiRefs.thresholdLabel);
     }
   }
-  if (typeof data.aiEndpoint === "string") {
-    uiRefs.inputAiEndpoint.value = data.aiEndpoint;
-  }
-  if (typeof data.aiModel === "string") {
-    uiRefs.inputAiModel.value = data.aiModel;
-  }
-  if (typeof data.aiApiKey === "string") {
-    uiRefs.inputAiApiKey.value = data.aiApiKey;
-  }
-  if (typeof data.aiTimeoutMs === "string") {
-    const v = parseInt(data.aiTimeoutMs, 10);
-    if (!isNaN(v) && v >= 1000) uiRefs.inputAiTimeout.value = String(v);
-  }
-  if (typeof data.aiUseProxy === "string") {
-    uiRefs.chkAiUseProxy.checked = data.aiUseProxy === "true";
-  }
   if (typeof data.requireManualConfirm === "string") {
     uiRefs.chkRequireManualConfirm.checked = data.requireManualConfirm === "true";
   }
@@ -83,11 +67,6 @@ export function exportConfigYaml(cfg: any): string {
     `useCoupons: ${cfg.useCoupons}`,
     `couponValue: ${cfg.couponValue.toFixed(2)}`,
     `couponAlertThreshold: ${cfg.couponAlertThreshold}`,
-    `aiEndpoint: ${cfg.aiEndpoint ?? ""}`,
-    `aiModel: ${cfg.aiModel ?? ""}`,
-    `aiApiKey: ""`,
-    `aiTimeoutMs: ${cfg.aiTimeoutMs ?? 30000}`,
-    `aiUseProxy: ${cfg.aiUseProxy ?? false}`,
     `requireManualConfirm: ${cfg.requireManualConfirm ?? true}`,
   ].join("\n") + "\n";
 }

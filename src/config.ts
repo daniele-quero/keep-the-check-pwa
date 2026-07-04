@@ -24,183 +24,10 @@ export interface ProviderConfig {
   cooldownMs: number;
 }
 
-const DEFAULT_PROVIDER_TIMEOUT_MS = 30000;
-const DEFAULT_PROVIDER_FAILURE_THRESHOLD = 3;
-const DEFAULT_PROVIDER_COOLDOWN_MS = 120000;
-
-export const AI_PROVIDER_PRESETS: ProviderConfig[] = [
-  {
-    id: "huggingface",
-    name: "Hugging Face",
-    endpointTemplate: "https://router.huggingface.co/v1/chat/completions",
-    model: "Qwen/Qwen2.5-VL-7B-Instruct",
-    apiKey: "",
-    useProxy: true,
-    enabled: false,
-    priority: 1,
-    timeoutMs: DEFAULT_PROVIDER_TIMEOUT_MS,
-    supportsImages: true,
-    failureThreshold: DEFAULT_PROVIDER_FAILURE_THRESHOLD,
-    cooldownMs: DEFAULT_PROVIDER_COOLDOWN_MS,
-  },
-  {
-    id: "cloudflare",
-    name: "Cloudflare Workers AI",
-    endpointTemplate:
-      "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/v1/chat/completions",
-    model: "@cf/meta/llama-3.2-11b-vision-instruct",
-    apiKey: "",
-    useProxy: true,
-    enabled: false,
-    priority: 2,
-    timeoutMs: DEFAULT_PROVIDER_TIMEOUT_MS,
-    supportsImages: true,
-    failureThreshold: DEFAULT_PROVIDER_FAILURE_THRESHOLD,
-    cooldownMs: DEFAULT_PROVIDER_COOLDOWN_MS,
-  },
-  {
-    id: "fireworks",
-    name: "Fireworks",
-    endpointTemplate: "https://api.fireworks.ai/inference/v1/chat/completions",
-    model: "accounts/fireworks/models/llama-v3p2-90b-vision-instruct",
-    apiKey: "",
-    useProxy: true,
-    enabled: false,
-    priority: 3,
-    timeoutMs: DEFAULT_PROVIDER_TIMEOUT_MS,
-    supportsImages: true,
-    failureThreshold: DEFAULT_PROVIDER_FAILURE_THRESHOLD,
-    cooldownMs: DEFAULT_PROVIDER_COOLDOWN_MS,
-  },
-  {
-    id: "mistral",
-    name: "Mistral",
-    endpointTemplate: "https://api.mistral.ai/v1/chat/completions",
-    model: "pixtral-12b-2409",
-    apiKey: "",
-    useProxy: true,
-    enabled: false,
-    priority: 4,
-    timeoutMs: DEFAULT_PROVIDER_TIMEOUT_MS,
-    supportsImages: true,
-    failureThreshold: DEFAULT_PROVIDER_FAILURE_THRESHOLD,
-    cooldownMs: DEFAULT_PROVIDER_COOLDOWN_MS,
-  },
-  {
-    id: "replicate",
-    name: "Replicate",
-    endpointTemplate: "https://api.replicate.com/v1/predictions",
-    model: "meta/meta-llama-3.2-11b-vision-instruct",
-    apiKey: "",
-    useProxy: true,
-    enabled: false,
-    priority: 5,
-    timeoutMs: DEFAULT_PROVIDER_TIMEOUT_MS,
-    supportsImages: true,
-    failureThreshold: DEFAULT_PROVIDER_FAILURE_THRESHOLD,
-    cooldownMs: DEFAULT_PROVIDER_COOLDOWN_MS,
-  },
-];
-
-function cloneProviders(providers: ProviderConfig[]): ProviderConfig[] {
-  return providers.map((provider) => ({
-    ...provider,
-    extraHeaders: provider.extraHeaders ? { ...provider.extraHeaders } : undefined,
-  }));
-}
-
-function normalizeExtraHeaders(input: unknown): Record<string, string> | undefined {
-  if (!input || typeof input !== "object") return undefined;
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
-    if (typeof value === "string") out[key] = value;
-  }
-  return Object.keys(out).length > 0 ? out : undefined;
-}
-
-function sanitizeProvider(input: unknown): ProviderConfig | null {
-  if (!input || typeof input !== "object") return null;
-  const raw = input as Record<string, unknown>;
-  const id = typeof raw.id === "string" ? raw.id.trim() : "";
-  if (!id) return null;
-
-  const preset = AI_PROVIDER_PRESETS.find((p) => p.id === id);
-  const base: ProviderConfig = preset
-    ? { ...preset }
-    : {
-      id,
-      name: id,
-      endpointTemplate: "",
-      model: "",
-      apiKey: "",
-      useProxy: true,
-      enabled: false,
-      priority: Number.MAX_SAFE_INTEGER,
-      timeoutMs: DEFAULT_PROVIDER_TIMEOUT_MS,
-      supportsImages: true,
-      failureThreshold: DEFAULT_PROVIDER_FAILURE_THRESHOLD,
-      cooldownMs: DEFAULT_PROVIDER_COOLDOWN_MS,
-    };
-
-  const priority =
-    typeof raw.priority === "number" && Number.isFinite(raw.priority)
-      ? Math.max(1, Math.floor(raw.priority))
-      : base.priority;
-
-  const timeoutMs =
-    typeof raw.timeoutMs === "number" && Number.isFinite(raw.timeoutMs)
-      ? Math.max(1000, Math.floor(raw.timeoutMs))
-      : base.timeoutMs;
-
-  const failureThreshold =
-    typeof raw.failureThreshold === "number" && Number.isFinite(raw.failureThreshold)
-      ? Math.max(1, Math.floor(raw.failureThreshold))
-      : base.failureThreshold;
-
-  const cooldownMs =
-    typeof raw.cooldownMs === "number" && Number.isFinite(raw.cooldownMs)
-      ? Math.max(1000, Math.floor(raw.cooldownMs))
-      : base.cooldownMs;
-
-  return {
-    ...base,
-    name: typeof raw.name === "string" ? raw.name : base.name,
-    endpointTemplate:
-      typeof raw.endpointTemplate === "string"
-        ? raw.endpointTemplate
-        : base.endpointTemplate,
-    model: typeof raw.model === "string" ? raw.model : base.model,
-    apiKey: typeof raw.apiKey === "string" ? raw.apiKey : base.apiKey,
-    useProxy: typeof raw.useProxy === "boolean" ? raw.useProxy : base.useProxy,
-    enabled: typeof raw.enabled === "boolean" ? raw.enabled : base.enabled,
-    priority,
-    timeoutMs,
-    extraHeaders: normalizeExtraHeaders(raw.extraHeaders) ?? base.extraHeaders,
-    supportsImages:
-      typeof raw.supportsImages === "boolean"
-        ? raw.supportsImages
-        : base.supportsImages,
-    failureThreshold,
-    cooldownMs,
-  };
-}
-
-function mergeWithProviderPresets(input: unknown): ProviderConfig[] {
-  const merged = cloneProviders(AI_PROVIDER_PRESETS);
-  if (Array.isArray(input)) {
-    for (const entry of input) {
-      const provider = sanitizeProvider(entry);
-      if (!provider) continue;
-      const idx = merged.findIndex((p) => p.id === provider.id);
-      if (idx >= 0) {
-        merged[idx] = { ...merged[idx], ...provider };
-      } else {
-        merged.push(provider);
-      }
-    }
-  }
-  return merged.sort((a, b) => a.priority - b.priority);
-}
+// Client-side endpoints for the server-side AI proxy (Netlify Functions).
+export const PROVIDERS_ENDPOINT = "/.netlify/functions/ai-providers";
+export const PROXY_ENDPOINT = "/.netlify/functions/ai-proxy";
+export const AI_REQUEST_TIMEOUT_MS = 30000;
 
 export interface CurrencyEntry {
   code: CurrencyCode;
@@ -235,17 +62,11 @@ export interface AppConfigData {
   useCoupons: boolean;
   couponValue: number;
   couponAlertThreshold: number;
-  aiEndpoint: string;
-  aiModel: string;
-  aiApiKey: string;
-  aiTimeoutMs: number;
-  aiUseProxy: boolean;
-  aiProviders: ProviderConfig[];
   requireManualConfirm: boolean;
   schemaVersion: number;
 }
 
-const CURRENT_SCHEMA_VERSION = 4;
+const CURRENT_SCHEMA_VERSION = 5;
 
 const LEGACY_KEYS_TO_STRIP = [
   "ocrProvider",
@@ -255,6 +76,12 @@ const LEGACY_KEYS_TO_STRIP = [
   "ocrApiKeys",
   "aiProvider",
   "aiApiKeys",
+  "aiEndpoint",
+  "aiModel",
+  "aiApiKey",
+  "aiTimeoutMs",
+  "aiUseProxy",
+  "aiProviders",
 ] as const;
 
 const DEFAULTS: AppConfigData = {
@@ -262,12 +89,6 @@ const DEFAULTS: AppConfigData = {
   useCoupons: false,
   couponValue: 0,
   couponAlertThreshold: 0.2,
-  aiEndpoint: "",
-  aiModel: "gpt-4o-mini",
-  aiApiKey: "",
-  aiTimeoutMs: 30000,
-  aiUseProxy: true,
-  aiProviders: cloneProviders(AI_PROVIDER_PRESETS),
   requireManualConfirm: true,
   schemaVersion: CURRENT_SCHEMA_VERSION,
 };
@@ -298,12 +119,9 @@ export class ConfigService {
       delete clean[k];
     }
 
-    const aiProviders = mergeWithProviderPresets(clean.aiProviders);
-
     this.data = {
       ...DEFAULTS,
       ...(clean as Partial<AppConfigData>),
-      aiProviders,
       schemaVersion: CURRENT_SCHEMA_VERSION,
     };
 
@@ -320,9 +138,6 @@ export class ConfigService {
 
   save(partial: Partial<AppConfigData>): void {
     const normalized: Partial<AppConfigData> = { ...partial };
-    if (Object.prototype.hasOwnProperty.call(normalized, "aiProviders")) {
-      normalized.aiProviders = mergeWithProviderPresets(normalized.aiProviders);
-    }
 
     Object.assign(this.data, normalized);
     try {

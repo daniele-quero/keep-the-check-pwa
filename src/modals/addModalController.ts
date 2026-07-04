@@ -1,16 +1,13 @@
 import type { AiExtractionResult, AiPrice } from "../aiPrompt";
 import type { SendImageToAIOptions } from "../api";
-import type { ProviderConfig } from "../config";
 import type { PriceItem } from "../models";
 import { createItemFromAi } from "../models";
 
 export interface AddModalControllerConfig {
-  aiEndpoint: string;
-  aiApiKey: string;
-  aiModel: string;
+  proxyEndpoint: string;
+  selectedProviderId?: string;
+  hasAnyProviderWithKey: boolean;
   aiTimeoutMs: number;
-  aiUseProxy: boolean;
-  aiProviders?: ProviderConfig[];
   requireManualConfirm: boolean;
 }
 
@@ -109,13 +106,7 @@ export class AddModalController {
 
   async analyzeImage(imageBase64: string): Promise<AiExtractionResult | null> {
     const cfg = this.deps.getConfig();
-    const hasEnabledProviderWithKey = (cfg.aiProviders ?? []).some(
-      (provider) =>
-        provider.enabled &&
-        typeof provider.apiKey === "string" &&
-        provider.apiKey.trim().length > 0
-    );
-    if (!hasEnabledProviderWithKey && (!cfg.aiEndpoint || cfg.aiEndpoint.trim() === "")) {
+    if (!cfg.hasAnyProviderWithKey) {
       this.showFallback(FALLBACK_MESSAGE_NO_ENDPOINT);
       return null;
     }
@@ -125,12 +116,12 @@ export class AddModalController {
     let result: AiExtractionResult;
     try {
       result = await this.deps.sendImageToAI(imageBase64, this.deps.prompt, {
-        endpoint: cfg.aiEndpoint,
-        apiKey: cfg.aiApiKey,
-        model: cfg.aiModel,
+        endpoint: cfg.proxyEndpoint,
+        useProxy: true,
         timeoutMs: cfg.aiTimeoutMs,
-        useProxy: cfg.aiUseProxy,
-        aiProviders: cfg.aiProviders,
+        extraHeaders: cfg.selectedProviderId
+          ? { "X-Provider-Id": cfg.selectedProviderId }
+          : undefined,
       });
     } catch {
       this.showFallback(FALLBACK_MESSAGE_DEFAULT);

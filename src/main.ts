@@ -1,9 +1,19 @@
 import "./style.css";
 import { CameraService } from "./camera";
-import { AI_PROVIDER_PRESETS, config, type ProviderConfig } from "./config";
+import {
+  config,
+  PROXY_ENDPOINT,
+  PROVIDERS_ENDPOINT,
+  AI_REQUEST_TIMEOUT_MS,
+} from "./config";
 import { listManager } from "./listManager";
 import { sendImageToAI } from "./api";
-import { createOptionsModal, initOptionTooltips } from "./modals/optionsModal";
+import {
+  createOptionsModal,
+  initOptionTooltips,
+  populateModelDropdown,
+  type ProviderOption,
+} from "./modals/optionsModal";
 import { createAddModal } from "./modals/addModal";
 import { AddModalController } from "./modals/addModalController";
 import { IMAGE_EXTRACTION_PROMPT } from "./aiPrompt";
@@ -11,6 +21,7 @@ import { createPriceItem, generateId, CurrencyCode } from "./models";
 import type { PriceItem } from "./models";
 import { uiRefs, populateSelect, updateThresholdLabel, addResultItem } from "./ui";
 import { parseSimpleYaml, applyYamlToModal, exportConfigYaml } from "./yamlConfig";
+import { getSelectedProvider, setSelectedProvider } from "./providerSelection";
 import { createTutorialModal, initTutorialLang } from "./modals/tutorialModal";
 
 
@@ -24,60 +35,20 @@ const tutorialModal = createTutorialModal();
 
 initTutorialLang();
 
-function getProviderInput(id: string, field: string): HTMLInputElement {
-  return document.getElementById(`opt-provider-${id}-${field}`) as HTMLInputElement;
-}
+let hasAnyProviderWithKey = false;
 
-function getProviderConfig(providers: readonly ProviderConfig[], id: string): ProviderConfig {
-  return (
-    providers.find((provider) => provider.id === id) ??
-    AI_PROVIDER_PRESETS.find((provider) => provider.id === id)!
-  );
-}
-
-function populateProviderOptions(providers: readonly ProviderConfig[]): void {
-  for (const preset of AI_PROVIDER_PRESETS) {
-    const provider = getProviderConfig(providers, preset.id);
-    getProviderInput(preset.id, "enabled").checked = provider.enabled;
-    getProviderInput(preset.id, "use-proxy").checked = provider.useProxy;
-    getProviderInput(preset.id, "priority").value = String(provider.priority);
-    getProviderInput(preset.id, "timeout").value = String(provider.timeoutMs);
-    getProviderInput(preset.id, "endpoint").value = provider.endpointTemplate;
-    getProviderInput(preset.id, "model").value = provider.model;
-    getProviderInput(preset.id, "api-key").value = provider.apiKey;
+async function loadProviderOptions(): Promise<void> {
+  try {
+    const res = await fetch(PROVIDERS_ENDPOINT);
+    if (!res.ok) throw new Error(`providers ${res.status}`);
+    const data = (await res.json()) as { providers?: ProviderOption[] };
+    const providers = data.providers ?? [];
+    hasAnyProviderWithKey = providers.some((p) => p.supportsVision && p.hasKey);
+    populateModelDropdown(uiRefs.selAiModel, providers, getSelectedProvider());
+  } catch {
+    hasAnyProviderWithKey = false;
+    populateModelDropdown(uiRefs.selAiModel, [], null);
   }
-}
-
-function readProviderOptions(): ProviderConfig[] {
-  const providers = AI_PROVIDER_PRESETS.map((preset) => {
-    const enabled = getProviderInput(preset.id, "enabled").checked;
-    const useProxy = getProviderInput(preset.id, "use-proxy").checked;
-    const priority = Math.max(
-      1,
-      parseInt(getProviderInput(preset.id, "priority").value, 10) || preset.priority
-    );
-    const timeoutMs = Math.max(
-      1000,
-      parseInt(getProviderInput(preset.id, "timeout").value, 10) || preset.timeoutMs
-    );
-    const endpointTemplate =
-      getProviderInput(preset.id, "endpoint").value.trim() || preset.endpointTemplate;
-    const model = getProviderInput(preset.id, "model").value.trim() || preset.model;
-    const apiKey = getProviderInput(preset.id, "api-key").value.trim();
-
-    return {
-      ...preset,
-      enabled,
-      useProxy,
-      priority,
-      timeoutMs,
-      endpointTemplate,
-      model,
-      apiKey,
-    };
-  });
-
-  return providers.sort((a, b) => a.priority - b.priority);
 }
 
 /* ??? Populate dropdowns ??? */
@@ -89,13 +60,8 @@ function populateOptions(): void {
   uiRefs.inputCouponVal.value = cfg.couponValue.toFixed(2);
   uiRefs.sliderThreshold.value = String(cfg.couponAlertThreshold);
   updateThresholdLabel(cfg.couponAlertThreshold, uiRefs.thresholdLabel);
-  uiRefs.inputAiEndpoint.value = cfg.aiEndpoint;
-  uiRefs.inputAiModel.value = cfg.aiModel;
-  uiRefs.inputAiApiKey.value = cfg.aiApiKey;
-  uiRefs.inputAiTimeout.value = String(cfg.aiTimeoutMs);
-  uiRefs.chkAiUseProxy.checked = cfg.aiUseProxy;
   uiRefs.chkRequireManualConfirm.checked = cfg.requireManualConfirm;
-  populateProviderOptions(cfg.aiProviders);
+  void loadProviderOptions();
 }
 
 
@@ -187,12 +153,10 @@ let scanning = false;
 const addModalController = new AddModalController({
   sendImageToAI,
   getConfig: () => ({
-    aiEndpoint: config.current.aiEndpoint,
-    aiApiKey: config.current.aiApiKey,
-    aiModel: config.current.aiModel,
-    aiTimeoutMs: config.current.aiTimeoutMs,
-    aiUseProxy: config.current.aiUseProxy,
-    aiProviders: config.current.aiProviders,
+    proxyEndpoint: PROXY_ENDPOINT,
+    selectedProviderId: getSelectedProvider() ?? undefined,
+    hasAnyProviderWithKey,
+    aiTimeoutMs: AI_REQUEST_TIMEOUT_MS,
     requireManualConfirm: config.current.requireManualConfirm,
   }),
   addItem: (item) => addResultItem(item, false, openEditModal),
@@ -241,20 +205,20 @@ uiRefs.sliderThreshold.addEventListener("input", () => {
 });
 
 uiRefs.btnOptOk.addEventListener("click", () => {
-  const aiProviders = readProviderOptions();
   config.save({
     currency: uiRefs.selCurrency.value as CurrencyCode,
     useCoupons: uiRefs.chkCoupons.checked,
     couponValue: parseFloat(uiRefs.inputCouponVal.value) || 0,
     couponAlertThreshold: parseFloat(uiRefs.sliderThreshold.value) || 0.2,
-    aiEndpoint: uiRefs.inputAiEndpoint.value.trim(),
-    aiModel: uiRefs.inputAiModel.value.trim(),
-    aiApiKey: uiRefs.inputAiApiKey.value.trim(),
-    aiTimeoutMs: Math.max(1000, parseInt(uiRefs.inputAiTimeout.value, 10) || 30000),
-    aiUseProxy: uiRefs.chkAiUseProxy.checked,
-    aiProviders,
     requireManualConfirm: uiRefs.chkRequireManualConfirm.checked,
   });
+
+  const selectedModel = uiRefs.selAiModel.value;
+  const selectedOption = uiRefs.selAiModel.selectedOptions[0];
+  if (selectedModel && selectedOption && !selectedOption.disabled) {
+    setSelectedProvider(selectedModel);
+  }
+
   optionsModal.close();
 });
 

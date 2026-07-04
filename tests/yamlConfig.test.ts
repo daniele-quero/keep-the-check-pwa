@@ -65,19 +65,17 @@ describe("parseSimpleYaml", () => {
     expect((result.keys as Record<string, string>).A).toBe("val-a");
   });
 
-  it("parses AI image analysis fields", () => {
+  it("parses coupon and confirm fields", () => {
     const yaml = [
-      "aiEndpoint: https://api.example.com/v1/chat",
-      "aiModel: gpt-4o-mini",
-      "aiTimeoutMs: 45000",
-      "aiUseProxy: true",
+      "useCoupons: true",
+      "couponValue: 5.00",
+      "couponAlertThreshold: 0.15",
       "requireManualConfirm: false",
     ].join("\n");
     const result = parseSimpleYaml(yaml);
-    expect(result.aiEndpoint).toBe("https://api.example.com/v1/chat");
-    expect(result.aiModel).toBe("gpt-4o-mini");
-    expect(result.aiTimeoutMs).toBe("45000");
-    expect(result.aiUseProxy).toBe("true");
+    expect(result.useCoupons).toBe("true");
+    expect(result.couponValue).toBe("5.00");
+    expect(result.couponAlertThreshold).toBe("0.15");
     expect(result.requireManualConfirm).toBe("false");
   });
 });
@@ -88,36 +86,32 @@ describe("exportConfigYaml", () => {
     useCoupons: false,
     couponValue: 0,
     couponAlertThreshold: 0.2,
-    aiEndpoint: "https://api.example.com/v1/chat",
-    aiModel: "gpt-4o-mini",
-    aiApiKey: "super-secret-image-key",
-    aiTimeoutMs: 45000,
-    aiUseProxy: true,
     requireManualConfirm: false,
   };
 
-  it("includes the new AI image fields in the output", () => {
+  it("includes the non-secret config fields in the output", () => {
     const yml = exportConfigYaml(baseCfg);
-    expect(yml).toContain("aiEndpoint: https://api.example.com/v1/chat");
-    expect(yml).toContain("aiModel: gpt-4o-mini");
-    expect(yml).toContain("aiTimeoutMs: 45000");
-    expect(yml).toContain("aiUseProxy: true");
+    expect(yml).toContain("currency: EUR");
+    expect(yml).toContain("useCoupons: false");
+    expect(yml).toContain("couponValue: 0.00");
+    expect(yml).toContain("couponAlertThreshold: 0.2");
     expect(yml).toContain("requireManualConfirm: false");
   });
 
-  it("strips the aiApiKey value from exported YAML to prevent leaking secrets", () => {
+  it("never emits any AI endpoint, model or key fields", () => {
     const yml = exportConfigYaml(baseCfg);
-    expect(yml).not.toContain("super-secret-image-key");
-    expect(yml).toMatch(/aiApiKey:\s*""/);
+    expect(yml).not.toContain("aiEndpoint");
+    expect(yml).not.toContain("aiModel");
+    expect(yml).not.toContain("aiApiKey");
+    expect(yml).not.toContain("aiUseProxy");
+    expect(yml).not.toContain("aiTimeoutMs");
   });
 
-  it("round-trips the non-secret AI fields through parseSimpleYaml", () => {
+  it("round-trips the non-secret fields through parseSimpleYaml", () => {
     const yml = exportConfigYaml(baseCfg);
     const parsed = parseSimpleYaml(yml);
-    expect(parsed.aiEndpoint).toBe(baseCfg.aiEndpoint);
-    expect(parsed.aiModel).toBe(baseCfg.aiModel);
-    expect(parsed.aiTimeoutMs).toBe(String(baseCfg.aiTimeoutMs));
-    expect(parsed.aiUseProxy).toBe("true");
+    expect(parsed.currency).toBe("EUR");
     expect(parsed.requireManualConfirm).toBe("false");
+    expect(parsed.couponAlertThreshold).toBe("0.2");
   });
 });
