@@ -11,6 +11,7 @@ Use it as a behavior guide, and link to existing docs instead of duplicating con
 - Run full test suite: npm test
 - Run tests in watch mode: npm run test:watch
 - Build production bundle: npm run build
+ - Runtime baseline: Node.js 20+ and npm 10+. Note: Netlify's build environment uses Node.js v22 and may set a specific TypeScript compiler option during CI builds. If you see compilation or runtime mismatches between local and Netlify builds, reproduce the build with Node v22 locally and align tsconfig.json / tsc options with Netlify's environment.
 - Preview production bundle: npm run preview
 
 Detailed setup and architecture overview: [README.md](README.md)

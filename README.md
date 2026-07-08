@@ -213,10 +213,23 @@ Shared data types, enums, and factory functions. Has zero dependencies on other 
 | `PriceItem` | `id: number`, `product: string`, `price: number`, `quantity: number`, optional `currency: string`, `confidence: number`, `source: "ai" \| "manual" \| "legacy"` | A single item in the shopping list |
 | `PriceResult` | `items: PriceItem[]` | A batch of parsed items |
 
+#### Types
+
+| Type | Values | Purpose |
+|---|---|---|
+| `PriceItemSource` | `"ai" \| "manual" \| "legacy"` | Origin of a `PriceItem` |
+
+#### Additional interfaces
+
+| Interface | Fields | Purpose |
+|---|---|---|
+| `AiExtractedItem` | `name: string \| null`, `price: number`, `currency: string \| null`, `confidence: number` | Flattened AI price result used to create a `PriceItem` |
+
 #### Functions
 
 - `generateId(): number` — monotonically increasing session-unique IDs.
-- `createPriceItem(product, price, opts?): PriceItem` — factory with `quantity: 1` and a fresh ID.
+- `createPriceItem(product, price): PriceItem` — factory with `quantity: 1`, `source: "manual"`, and a fresh ID.
+- `createItemFromAi(extracted, quantity?): PriceItem` — factory that maps an `AiExtractedItem` to a `PriceItem` with `source: "ai"`.
 
 ---
 
@@ -227,6 +240,7 @@ Persistent configuration in `localStorage["appConfig"]`. See [AI Image Analysis 
 - `DEFAULTS: AppConfigData` — initial values.
 - `STORAGE_KEY = "appConfig"`.
 - `CURRENT_SCHEMA_VERSION = 5`.
+- `ProviderConfig` — client-side provider descriptor used by `sendImageToAI` when operating in multi-provider mode: `{ id, name, endpointTemplate, model, apiKey, useProxy, enabled, priority, timeoutMs, extraHeaders?, supportsImages, failureThreshold, cooldownMs }`.
 - `ConfigService` — reactive service:
        - `constructor(storage?)` — loads from storage and runs legacy-migration when `schemaVersion < 5` or any legacy key is present.
   - `get current(): Readonly<AppConfigData>`.
@@ -244,7 +258,7 @@ The AI-related exports `PROVIDERS_ENDPOINT`, `PROXY_ENDPOINT`, and `AI_REQUEST_T
 Server-side provider registry, imported by both the client (for typing/UI) and the Netlify Functions.
 
 - `ProviderCatalogEntry` — `{ id, name, endpoint, model, envKey, supportsVision, jsonMode, temperature, maxTokens, extraHeaders? }`.
-- `PROVIDER_CATALOG` — the seven built-in provider entries (see [AI Image Analysis Configuration](#ai-image-analysis-configuration)).
+- `PROVIDER_CATALOG` — the six built-in provider entries (see [AI Image Analysis Configuration](#ai-image-analysis-configuration)).
 - `getCatalogEntry(id)` — lookup by id.
 - `getVisionProviders()` — entries with `supportsVision: true`; the pool eligible for image analysis and fallback.
 
@@ -278,10 +292,18 @@ Wraps `MediaDevices` to access the rear camera and capture frames.
 The verbatim extraction prompt and helpers that turn the AI response into `PriceItem` candidates.
 
 - `IMAGE_EXTRACTION_PROMPT: string` — embedded verbatim; the integration test asserts character-for-character equality.
-- Schema types: `AiExtractedProduct`, `AiExtractedPrice`, `AiBoundingBox`, `AiExtractionMetadata`, `AiExtractionResult`.
-- `parseAiExtractionJson(raw: string | object): AiExtractionResult` — strips Markdown fences, parses, validates required keys. Throws `AiExtractionError("invalid_json")` or `AiExtractionError("schema_mismatch")`.
+- Schema types:
+  - `AiPriceType` — union of `"unit_price" | "total_price" | "discount_price" | "old_price" | "price_per_unit" | "other"`.
+  - `AiBoundingBox` — `{ x, y, width, height }` in pixels.
+  - `AiNameCandidate` — `{ text: string, confidence: number }`.
+  - `AiPrice` — single price entry with `raw_text`, `normalized`, `currency`, `confidence`, `type: AiPriceType`, `bounding_box`, optional `notes`.
+  - `AiProduct` — product entry with `id`, `name`, `name_confidence`, `name_raw`, `name_candidates`, `prices`, optional `notes`.
+  - `AiExtractionMetadata` — `{ processing_ms, model }`.
+  - `AiExtractionResult` — top-level extraction envelope: `version`, `products`, `image_text`, `metadata`, `warnings`, `uncertain`.
+  - `AiExtractionErrorCode` — `"invalid_json" | "schema_mismatch" | "empty" | "http_error" | "timeout" | "network"`.
+- `parseAiExtractionJson(raw: string): AiExtractionResult` — strips Markdown fences, parses, validates required keys. Throws `AiExtractionError("invalid_json")`, `AiExtractionError("schema_mismatch")`, or `AiExtractionError("empty")`.
 - `toPriceItems(result, defaultCurrency)` — picks the highest-confidence name and emits one item per `unit_price` / `total_price` entry, skipping `old_price` unless it is the only available price.
-- `AiExtractionError` — typed error with a stable `code` string.
+- `AiExtractionError` — typed error with a stable `code: AiExtractionErrorCode`.
 
 ---
 
@@ -300,12 +322,23 @@ Single network function for the scan pipeline. No DOM access.
 | `signal` | Optional caller-owned `AbortSignal` (composed with the timeout). |
 | `useProxy` | When `true`, posts without an `Authorization` header. |
 | `extraHeaders` | Optional extra request headers (e.g. `X-Provider-Id` carrying the client selection). |
+| `aiProviders` | Optional `ProviderConfig[]` for client-side multi-provider mode (enabled providers with a non-empty `apiKey`). When at least one enabled provider is present they take precedence over the `endpoint`/`apiKey` legacy path. |
 
-Request body: JSON `{ model, prompt, image: { mimeType: "image/jpeg", dataBase64: base64 } }`.
+**Provider resolution and fallback (client-side multi-provider mode)**
 
-Response handling: tries the JSON body directly; if it doesn't match the schema, falls back to common envelope shapes (`output_text`, `choices[0].message.content`) and re-parses.
+When `aiProviders` contains at least one enabled provider with a key, `sendImageToAI` resolves the provider list from that array (sorted by `priority`), uses round-robin start rotation stored in `localStorage["aiProviderFallback.nextStartIndex"]`, and iterates over all providers until one succeeds. Failed providers are tracked with a circuit-breaker: after reaching `failureThreshold` consecutive transient failures the provider is blocked for `cooldownMs` milliseconds. The rotation index is advanced on each invocation.
 
-Errors are surfaced as `AiExtractionError` with codes: `"timeout"`, `"http_<status>"`, `"invalid_json"`, `"schema_mismatch"`.
+When no configured provider is present, the legacy single-provider path (`endpoint` + optional `apiKey`) is used.
+
+**Provider kinds**
+
+`ProviderKind = "chat" | "replicate"`. The `"replicate"` kind posts an `{ input: { prompt, image } }` body; the `"chat"` kind posts an OpenAI-compatible messages array with an embedded `image_url`. The provider id `"replicate"` selects the Replicate format automatically.
+
+Request headers: `Content-Type: application/json`. In non-proxy mode, `Authorization: Bearer <key>` (or `Token <key>` for Replicate) is added. In proxy mode no auth header is sent.
+
+Response handling: tries the JSON body directly; if it doesn't match the schema, falls back to common envelope shapes (`output_text`, `choices[0].message.content`, Replicate `output`) and re-parses.
+
+Errors are surfaced as `AiExtractionError` with codes: `"timeout"`, `"network"`, `"empty"`, `"http_error"`, `"invalid_json"`, `"schema_mismatch"`.
 
 ---
 
@@ -316,8 +349,7 @@ Stateful shopping list. Tracks items, computes the total, and evaluates the coup
 - `addItem(item)` — if `source` is missing it defaults to `"legacy"`; if `currency` is missing it defaults to `config.current.currency`.
 - `removeItem(id)`.
 - `changeQuantity(id, delta)` — clamped to `>= 1`.
-- `updateItem(id, partial)`.
-- `recalculate()` — re-runs notify without mutating state.
+- `updateItem(id, product, price, quantity)` — replaces product name, unit price, and quantity for an existing item and recalculates the total.- `recalculate()` — re-runs notify without mutating state.
 - `notify()` — recomputes coupon math from `config.current` and fires `onTotalUpdated(total, coupons)` + `onCouponAlert(showAlert, remaining)`.
 
 Singleton: `export const listManager = new ListManager()`.
@@ -346,9 +378,9 @@ Generic slide-in modal base class. `open()`, `close()`, `get opened`.
 
 Self-contained tutorial content for Italian and English.
 
-- `translations: Record<Lang, TutorialContent>` — IT + EN trees. The "Analisi IA dell'immagine" / "Image AI Analysis" section explains the privacy boundary (image only goes to the configured endpoint when the user scans) and how to obtain a key from the chosen provider.
+- `translations: Record<Lang, TutorialContent>` — IT + EN trees. The "⚙️ Opzioni" / "⚙️ Options" section drives `getOptionTooltips` with colon-separated `key: description` lines.
 - `renderTutorial(lang)` — renders the tree to HTML.
-- `getOptionTooltips(lang)` — produces `{ label → description }` for the options modal, including `"AI Endpoint"`, `"AI Model"`, `"AI Timeout"`, `"AI Key"`, `"Use AI Proxy"`, `"Require Manual Confirm"`.
+- `getOptionTooltips(lang)` — dynamically extracts tooltip keys and descriptions from the Options section of the tutorial content (parses `key: description` lines). Keys present: `"Currency"`, `"AI Image Endpoint"`, `"AI Image Model"`, `"AI Image Key"`, `"AI Image Timeout"`, `"Use Image Proxy"`, `"Require Manual Confirm"`, `"Use Coupons"`, `"Value"`, `"Threshold"`, `"Import"`.
 
 ---
 
@@ -399,7 +431,7 @@ Application entry point. Bootstraps services, injects modals, and binds event li
 - `createOptionsModal()` — injects `optionsModal.html` once and returns a `Modal` for `#options-panel` / `#options-overlay`.
 - `initOptionTooltips()` — event-delegated tooltips driven by `data-tip` attributes; descriptions come from `getOptionTooltips(lang)`.
 - `populateModelDropdown(select, providers, selectedId?)` — renders one `<option>` per vision provider; providers without a server key are disabled with a `(no key)` suffix and cannot be preselected.
-- The HTML contains the single AI provider dropdown (`#opt-ai-model`), the `#opt-require-manual-confirm` checkbox, and a visible `.opt-warning` explaining that keys live only on the server-side proxy.
+- The HTML exposes: the AI provider dropdown (`#opt-ai-model`), the `#opt-require-manual-confirm` checkbox, currency selector, coupon fields, and import/export buttons. The `data-tip` keys used in the HTML are `"Currency"`, `"AI Image Model"`, `"Require Manual Confirm"`, `"Use Coupons"`, `"Value"`, `"Threshold"`, `"Import"`.
 
 ---
 
@@ -419,11 +451,24 @@ The HTML defines three regions controlled by the body classes `mode-analyze` / `
 
 Orchestrates the modal in its three modes:
 
-- `openAddModalForScan(base64)` — opens in `mode-analyze`, calls `sendImageToAI(base64, IMAGE_EXTRACTION_PROMPT, …)` with an `AbortController` wired to `#add-analyze-cancel`, then renders editable rows (`mode-results`). When `requireManualConfirm` is `false`, items are added to `listManager` immediately and the modal closes.
+- `openAddModalForScan(base64)` — opens in `mode-analyze`, calls `sendImageToAI(base64, IMAGE_EXTRACTION_PROMPT, …)` with an `AbortController` wired to `#add-analyze-cancel`, then renders editable rows (`mode-results`). When `requireManualConfirm` is `false` **and** the result contains a single product with all non-zero confidence values, items are added to `listManager` immediately and the modal closes.
 - `openAddModalForManual()` — opens directly in `mode-manual`.
 - `openAddModalForEdit(item)` — opens `mode-manual` prefilled with the item's fields.
 
 Items added via the AI rows get `source: "ai"`; items entered via the manual form get `source: "manual"`.
+
+#### Exported interfaces
+
+| Interface | Purpose |
+|---|---|
+| `AddModalControllerConfig` | Runtime config snapshot: `proxyEndpoint`, `selectedProviderId?`, `hasAnyProviderWithKey`, `aiTimeoutMs`, `requireManualConfirm` |
+| `AddModalControllerDeps` | Dependency injection bag: `sendImageToAI`, `getConfig`, `addItem`, `root`, `prompt`, `onConfirmed?`, `onFallback?` |
+| `CollectedItem` | Intermediate item from an editable row: `name`, `price`, `currency`, `confidence`, `type` |
+
+#### Exported functions
+
+- `shouldAutoConfirmAiResult(result, requireManualConfirm): boolean` — returns `true` when `requireManualConfirm` is `false` and the result has exactly one product with all prices having `confidence > 0`. Drives the auto-add path.
+- `shouldOpenAddModalAfterScan(result, requireManualConfirm): boolean` — inverse of `shouldAutoConfirmAiResult`; `true` when the modal should remain open for manual review.
 
 ---
 
