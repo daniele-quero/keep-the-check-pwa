@@ -41,6 +41,48 @@ html, body {
   height: 100dvh;
 }
 
+#app.app-hidden {
+  display: none !important;
+}
+
+body.desktop-blocked {
+  overflow: hidden;
+}
+
+.desktop-blocker {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.68), transparent 52%),
+    linear-gradient(180deg, #f8ddcb 0%, #f2c4a8 100%);
+}
+
+.desktop-blocker__card {
+  width: min(560px, 100%);
+  padding: 28px 22px;
+  border-radius: 18px;
+  background: rgba(255, 249, 243, 0.94);
+  border: 1px solid rgba(122, 63, 42, 0.22);
+  box-shadow: 0 16px 32px rgba(80, 35, 20, 0.18);
+}
+
+.desktop-blocker__title {
+  font-size: 1.35rem;
+  color: #6b3821;
+  margin-bottom: 10px;
+}
+
+.desktop-blocker__text {
+  color: #5a2f1d;
+  line-height: 1.45;
+}
+
 /* ??? Camera ??? */
 #camera-section {
   width: 100%;

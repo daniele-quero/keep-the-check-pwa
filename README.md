@@ -106,6 +106,12 @@ npm test             # Run all tests once
 npm run test:watch   # Run tests in watch mode
 ```
 
+## Mobile-only access
+
+- The PWA is intended for phone/tablet usage only.
+- If opened from a desktop/laptop browser, the app is blocked and shows an English notice inviting the user to switch to a mobile device.
+- For desktop QA only, you can append `?forceMobile=1` to bypass the gate (example: `http://localhost:5173/?forceMobile=1`).
+
 ---
 
 ## AI Image Analysis Configuration
