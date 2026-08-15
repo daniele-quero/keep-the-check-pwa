@@ -8,12 +8,7 @@ import {
 } from "./config";
 import { listManager } from "./listManager";
 import { sendImageToAI } from "./api";
-import {
-  createOptionsModal,
-  initOptionTooltips,
-  populateModelDropdown,
-  type ProviderOption,
-} from "./modals/optionsModal";
+import { createOptionsModal, initOptionTooltips } from "./modals/optionsModal";
 import { createAddModal } from "./modals/addModal";
 import {
   AddModalController,
@@ -24,7 +19,6 @@ import { createPriceItem, generateId, CurrencyCode } from "./models";
 import type { PriceItem } from "./models";
 import { uiRefs, populateSelect, updateThresholdLabel, addResultItem } from "./ui";
 import { parseSimpleYaml, applyYamlToModal, exportConfigYaml } from "./yamlConfig";
-import { getSelectedProvider, setSelectedProvider } from "./providerSelection";
 import { createTutorialModal, initTutorialLang } from "./modals/tutorialModal";
 import { isMobileDevice, showDesktopNotice } from "./mobileGate";
 
@@ -37,21 +31,7 @@ export async function initApp(): Promise<void> {
 
   initTutorialLang();
 
-  let hasAnyProviderWithKey = false;
-
-  async function loadProviderOptions(): Promise<void> {
-    try {
-      const res = await fetch(PROVIDERS_ENDPOINT);
-      if (!res.ok) throw new Error(`providers ${res.status}`);
-      const data = (await res.json()) as { providers?: ProviderOption[] };
-      const providers = data.providers ?? [];
-      hasAnyProviderWithKey = providers.some((p) => p.supportsVision && p.hasKey);
-      populateModelDropdown(uiRefs.selAiModel, providers, getSelectedProvider());
-    } catch {
-      hasAnyProviderWithKey = false;
-      populateModelDropdown(uiRefs.selAiModel, [], null);
-    }
-  }
+  let hasAnyProviderWithKey = true;
 
   function populateOptions(): void {
     const cfg = config.current;
@@ -61,7 +41,6 @@ export async function initApp(): Promise<void> {
     uiRefs.sliderThreshold.value = String(cfg.couponAlertThreshold);
     updateThresholdLabel(cfg.couponAlertThreshold, uiRefs.thresholdLabel);
     uiRefs.chkRequireManualConfirm.checked = cfg.requireManualConfirm;
-    void loadProviderOptions();
   }
 
   uiRefs.inputImport.addEventListener("change", () => {
@@ -146,7 +125,7 @@ export async function initApp(): Promise<void> {
     sendImageToAI,
     getConfig: () => ({
       proxyEndpoint: PROXY_ENDPOINT,
-      selectedProviderId: getSelectedProvider() ?? undefined,
+      selectedProviderId: undefined,
       hasAnyProviderWithKey,
       aiTimeoutMs: AI_REQUEST_TIMEOUT_MS,
       requireManualConfirm: config.current.requireManualConfirm,
@@ -218,12 +197,6 @@ export async function initApp(): Promise<void> {
       couponAlertThreshold: parseFloat(uiRefs.sliderThreshold.value) || 0.2,
       requireManualConfirm: uiRefs.chkRequireManualConfirm.checked,
     });
-
-    const selectedModel = uiRefs.selAiModel.value;
-    const selectedOption = uiRefs.selAiModel.selectedOptions[0];
-    if (selectedModel && selectedOption && !selectedOption.disabled) {
-      setSelectedProvider(selectedModel);
-    }
 
     optionsModal.close();
   });

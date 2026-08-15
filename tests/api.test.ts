@@ -12,7 +12,7 @@ vi.stubGlobal("fetch", mockFetch);
 
 beforeEach(() => {
   mockFetch.mockReset();
-  localStorage.removeItem("aiProviderFallback.nextStartIndex");
+  globalThis.localStorage?.removeItem("aiProviderFallback.nextStartIndex");
 });
 
 describe("api module surface", () => {
@@ -64,74 +64,60 @@ describe("sendImageToAI", () => {
     };
   }
 
-  it("uses fallback only for providers with API key present", async () => {
-    const missingKey = provider("missing-key", "https://missing-key.test/v1", {
-      apiKey: "",
-      priority: 1,
-    });
-    const withKey = provider("with-key", "https://with-key.test/v1", {
-      apiKey: "k-live",
-      priority: 2,
-    });
-
+  it("sends the single auto:vision payload with image_data and stream false", async () => {
     mockFetch.mockResolvedValueOnce(okText(multiFixture));
 
-    const result = await sendImageToAI("AAAA", "PROMPT", {
-      endpoint: "",
-      aiProviders: [missingKey, withKey],
-    });
-
-    expect(result.version).toBe("1.0");
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch.mock.calls[0][0]).toBe("https://with-key.test/v1");
-  });
-
-  it("POSTs to endpoint with Authorization Bearer header when apiKey set and useProxy false", async () => {
-    mockFetch.mockResolvedValueOnce(okText(multiFixture));
-
-    await sendImageToAI("AAAA", "PROMPT-X", {
-      endpoint: "https://example.test/v1/chat",
+    await sendImageToAI("data:image/png;base64,ABCDEF", "What color is this image?", {
+      endpoint: "https://gateway.example.test/vision",
       apiKey: "KEY",
-      model: "gpt-test",
+      useProxy: false,
     });
 
     const [url, options] = mockFetch.mock.calls[0];
-    expect(url).toBe("https://example.test/v1/chat");
+    expect(url).toBe("https://gateway.example.test/vision");
     expect(options.method).toBe("POST");
     expect(options.headers["Content-Type"]).toBe("application/json");
     expect(options.headers["Authorization"]).toBe("Bearer KEY");
+
     const body = JSON.parse(options.body);
-    expect(body.model).toBe("gpt-test");
-    expect(body.response_format).toEqual({ type: "json_object" });
+    expect(body.model).toBe("auto:vision");
+    expect(body.stream).toBe(false);
+    expect(body.messages).toHaveLength(1);
+    expect(body.messages[0].role).toBe("user");
+    expect(body.messages[0].content).toEqual([
+      { type: "text", text: "What color is this image?" },
+      { type: "image_data", mimeType: "image/png", data: "ABCDEF" },
+    ]);
   });
 
   it("omits Authorization header when useProxy is true", async () => {
     mockFetch.mockResolvedValueOnce(okText(multiFixture));
 
     await sendImageToAI("AAAA", "P", {
-      endpoint: "/ai-proxy",
+      endpoint: "/.netlify/functions/ai-proxy",
       apiKey: "SHOULD-NOT-LEAK",
       useProxy: true,
     });
 
     const [url, options] = mockFetch.mock.calls[0];
-    expect(url).toBe("/ai-proxy");
+    expect(url).toBe("/.netlify/functions/ai-proxy");
     expect(options.headers["Authorization"]).toBeUndefined();
   });
 
-  it("strips data:image/png;base64, prefix before embedding", async () => {
+  it("strips data URLs and keeps image_data mimeType aligned with the captured image", async () => {
     mockFetch.mockResolvedValueOnce(okText(multiFixture));
 
     await sendImageToAI("data:image/png;base64,ABCDEF", "P", {
-      endpoint: "https://e.test",
+      endpoint: "https://e.test/vision",
       apiKey: "k",
     });
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    const imagePart = body.messages[0].content.find(
-      (c: { type: string }) => c.type === "image_url"
-    );
-    expect(imagePart.image_url.url).toBe("data:image/jpeg;base64,ABCDEF");
+    expect(body.messages[0].content[1]).toEqual({
+      type: "image_data",
+      mimeType: "image/png",
+      data: "ABCDEF",
+    });
   });
 
   it("includes the verbatim prompt in the text content part", async () => {
@@ -139,7 +125,7 @@ describe("sendImageToAI", () => {
     const prompt = "verbatim-prompt-\u00a0-with-special-€-chars";
 
     await sendImageToAI("RAWB64", prompt, {
-      endpoint: "https://e.test",
+      endpoint: "https://e.test/vision",
       apiKey: "k",
     });
 

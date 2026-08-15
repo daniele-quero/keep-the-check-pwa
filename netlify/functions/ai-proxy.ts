@@ -19,6 +19,8 @@ declare const process: { env: Record<string, string | undefined> };
 
 const PROVIDER_TIMEOUT_MS = 30000;
 const DATA_URL_PREFIX_RE = /^data:image\/[a-zA-Z0-9.+-]+;base64,/;
+const VISION_GATEWAY_URL = process.env.AI_GATEWAY_VISION_URL;
+const VISION_GATEWAY_KEY = process.env.AI_GATEWAY_VISION_KEY;
 
 interface ProxyAttempt {
   providerId: string;
@@ -115,6 +117,30 @@ function isCyclableStatus(status: number): boolean {
   return status === 429 || status === 401 || status === 403 || status >= 500;
 }
 
+async function forwardToVisionGateway(payload: Record<string, unknown>): Promise<Response> {
+  if (!VISION_GATEWAY_URL || !VISION_GATEWAY_KEY) {
+    return json(502, {
+      error: "vision_gateway_not_configured",
+      message: "AI_GATEWAY_VISION_URL and AI_GATEWAY_VISION_KEY are not set",
+    });
+  }
+
+  const res = await fetch(VISION_GATEWAY_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${VISION_GATEWAY_KEY}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const text = await res.text();
+  return new Response(text, {
+    status: res.ok ? 200 : res.status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== "POST") {
     return json(405, { error: "method_not_allowed" });
@@ -137,6 +163,13 @@ export default async function handler(req: Request): Promise<Response> {
     payload.imageBase64.trim().length > 0;
   if (!hasMessages && !hasImageField) {
     return json(400, { error: "missing_image" });
+  }
+
+  const isUnifiedVisionRequest =
+    typeof payload.model === "string" &&
+    payload.model.trim().toLowerCase() === "auto:vision";
+  if (isUnifiedVisionRequest) {
+    return forwardToVisionGateway(payload);
   }
 
   const selectedId =

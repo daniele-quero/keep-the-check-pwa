@@ -28,23 +28,10 @@ export interface ProviderOption {
  */
 export function populateModelDropdown(
   select: HTMLSelectElement,
-  providers: ProviderOption[],
-  selectedId?: string | null
+  _providers: ProviderOption[],
+  _selectedId?: string | null
 ): void {
   select.innerHTML = "";
-  for (const provider of providers) {
-    if (!provider.supportsVision) continue;
-    const opt = document.createElement("option");
-    opt.value = provider.id;
-    opt.textContent = provider.hasKey
-      ? provider.name
-      : `${provider.name} (no key)`;
-    opt.disabled = !provider.hasKey;
-    if (provider.hasKey && provider.id === selectedId) {
-      opt.selected = true;
-    }
-    select.appendChild(opt);
-  }
 }
 
 export function initOptionTooltips(): void {

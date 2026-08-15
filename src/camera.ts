@@ -38,7 +38,7 @@ export class CameraService {
     if (!ctx) return null;
 
     ctx.drawImage(this.video, 0, 0);
-    return canvas.toDataURL("image/jpeg", 0.75).split(",")[1];
+    return canvas.toDataURL("image/png").split(",")[1];
   }
 
   captureCropped(cropRatio: number): string | null {
@@ -83,6 +83,6 @@ export class CameraService {
     if (!ctx) return null;
 
     ctx.drawImage(this.video, finalX, finalY, finalW, finalH, 0, 0, finalW, finalH);
-    return canvas.toDataURL("image/jpeg", 0.75).split(",")[1];
+    return canvas.toDataURL("image/png").split(",")[1];
   }
 }

@@ -5,6 +5,8 @@ import {
 } from "./aiPrompt";
 import type { ProviderConfig } from "./config";
 
+export const MODEL_VISION = "auto:vision";
+
 export interface SendImageToAIOptions {
   endpoint: string;
   apiKey?: string;
@@ -21,6 +23,7 @@ const DATA_URL_PREFIX_RE = /^data:image\/[a-zA-Z0-9.+-]+;base64,/;
 const ROUND_ROBIN_STORAGE_KEY = "aiProviderFallback.nextStartIndex";
 const DEFAULT_FAILURE_THRESHOLD = 3;
 const DEFAULT_COOLDOWN_MS = 120000;
+let inMemoryRoundRobinStartIndex = 0;
 
 type ProviderKind = "chat" | "replicate";
 
@@ -89,7 +92,7 @@ function resolveProviders(opts: SendImageToAIOptions): ResolvedProvider[] {
       name: "legacy",
       kind: "chat",
       endpoint: opts.endpoint,
-      model: opts.model ?? "",
+      model: opts.model ?? MODEL_VISION,
       apiKey: opts.apiKey,
       useProxy: opts.useProxy === true,
       timeoutMs: opts.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS,
@@ -101,16 +104,41 @@ function resolveProviders(opts: SendImageToAIOptions): ResolvedProvider[] {
 }
 
 function getRoundRobinStartIndex(providerCount: number): number {
-  if (providerCount <= 0 || typeof localStorage === "undefined") return 0;
-  const raw = localStorage.getItem(ROUND_ROBIN_STORAGE_KEY);
-  const parsed = raw ? parseInt(raw, 10) : 0;
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return parsed % providerCount;
+  if (providerCount <= 0) return 0;
+
+  try {
+    if (typeof globalThis !== "undefined" && "localStorage" in globalThis) {
+      const storage = globalThis.localStorage;
+      if (storage) {
+        const raw = storage.getItem(ROUND_ROBIN_STORAGE_KEY);
+        const parsed = raw ? parseInt(raw, 10) : 0;
+        if (Number.isFinite(parsed) && parsed >= 0) {
+          return parsed % providerCount;
+        }
+      }
+    }
+  } catch {
+    // localStorage may be disabled or unavailable in restricted runtimes.
+  }
+
+  return inMemoryRoundRobinStartIndex % providerCount;
 }
 
 function setRoundRobinStartIndex(nextIndex: number): void {
-  if (typeof localStorage === "undefined") return;
-  localStorage.setItem(ROUND_ROBIN_STORAGE_KEY, String(Math.max(0, nextIndex)));
+  const normalized = Math.max(0, nextIndex);
+  inMemoryRoundRobinStartIndex = normalized;
+
+  try {
+    if (typeof globalThis !== "undefined" && "localStorage" in globalThis) {
+      const storage = globalThis.localStorage;
+      if (storage) {
+        storage.setItem(ROUND_ROBIN_STORAGE_KEY, String(normalized));
+        return;
+      }
+    }
+  } catch {
+    // localStorage may be disabled or unavailable in restricted runtimes.
+  }
 }
 
 function getAttemptOrder(providerCount: number, startIndex: number): number[] {
@@ -175,9 +203,12 @@ function buildHeaders(
 }
 
 function buildBody(provider: ResolvedProvider, prompt: string, rawBase64: string): unknown {
-  const imageUrl = `data:image/jpeg;base64,${rawBase64}`;
+  const normalizedModel = provider.model || MODEL_VISION;
+  const isUnifiedVisionRequest =
+    normalizedModel === MODEL_VISION || provider.endpoint.toLowerCase().includes("/vision");
 
   if (provider.kind === "replicate") {
+    const imageUrl = `data:image/jpeg;base64,${rawBase64}`;
     const body: Record<string, unknown> = {
       input: {
         prompt,
@@ -190,6 +221,24 @@ function buildBody(provider: ResolvedProvider, prompt: string, rawBase64: string
     return body;
   }
 
+  if (isUnifiedVisionRequest) {
+    const body: Record<string, unknown> = {
+      model: normalizedModel,
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_data", mimeType: "image/png", data: rawBase64 },
+          ],
+        },
+      ],
+    };
+    return body;
+  }
+
+  const imageUrl = `data:image/png;base64,${rawBase64}`;
   const body: Record<string, unknown> = {
     messages: [
       {

@@ -1,6 +1,6 @@
 # Keep The Check — PWA
 
-A Progressive Web App that helps you track prices while shopping. Point the camera at a price tag or receipt: the app sends the image to a **server-side proxy** (Netlify Functions), which forwards it to an AI vision provider using a key stored in Netlify Environment Variables. The provider returns a structured list of products and prices. You review and edit the result, then save items to a running total. **API keys never reach the browser.**
+A Progressive Web App that helps you track prices while shopping. Point the camera at a price tag or receipt: the app sends the image to a **server-side proxy** (Netlify Functions), which forwards it to a single fixed vision gateway using a secret stored in Netlify Environment Variables. The gateway returns a structured list of products and prices. You review and edit the result, then save items to a running total. **API keys never reach the browser.**
 
 ---
 
@@ -44,8 +44,8 @@ A Progressive Web App that helps you track prices while shopping. Point the came
 | **Vite 5** | Dev server & bundler |
 | **Vitest 2** | Unit test runner |
 | **jsdom** | DOM emulation in tests |
-| **Netlify Functions** | Server-side AI proxy — keeps provider API keys off the client |
-| **AI Vision API** | Image-to-structured-JSON extraction (provider selected from a server-side registry) |
+| **Netlify Functions** | Server-side AI proxy — keeps gateway secrets off the client |
+| **AI Vision API** | Single fixed `auto:vision` multimodal gateway returning structured JSON |
 
 ---
 
@@ -60,11 +60,11 @@ keep-the-check-pwa/
 ├── package.json           # NPM scripts and dependencies
 ├── netlify.toml           # Production redirects + functions config (Node 20, esbuild)
 ├── generateIcons.mjs      # Script to generate PWA icons with sharp
-├── .env.example           # Template AI_KEY_<PROVIDER> env vars for the Netlify Functions
+├── .env.example           # Template AI_GATEWAY_* env vars for the Netlify Functions
 ├── netlify/
 │   └── functions/
-│       ├── ai-providers.ts        # GET registry: which providers exist and have a key
-│       └── ai-proxy.ts            # POST proxy: injects key, cyclic server-side fallback
+│       ├── ai-providers.ts        # Compatibility registry for provider metadata
+│       └── ai-proxy.ts            # POST proxy: injects AI_GATEWAY_VISION_KEY and forwards to the fixed vision gateway
 ├── public/
 │   ├── manifest.json      # PWA manifest
 │   └── sw.js              # Service Worker (network-first pass-through)
@@ -72,8 +72,7 @@ keep-the-check-pwa/
     ├── main.ts            # App entry point — wires everything together
     ├── models.ts          # Shared data types and factory functions
     ├── config.ts          # Persistent configuration service (schemaVersion: 5)
-    ├── providerCatalog.ts # Server-side provider registry (endpoints, models, env keys)
-    ├── providerSelection.ts # Client temporary provider selection (sessionStorage, 1h TTL)
+    ├── providerCatalog.ts # Server-side provider registry (compatibility/metadata only)
     ├── camera.ts          # Camera access and image capture
     ├── aiPrompt.ts        # Verbatim extraction prompt + JSON-schema parsing
     ├── api.ts             # sendImageToAI transport
@@ -116,53 +115,52 @@ npm run test:watch   # Run tests in watch mode
 
 ## AI Image Analysis Configuration
 
-API keys live **only** on the server as Netlify Environment Variables. The browser never receives a key. The scan pipeline posts the captured JPEG (base64) plus the verbatim extraction prompt from `src/aiPrompt.ts` to the `ai-proxy` Netlify Function, which injects the key and forwards the request to the selected AI provider. It expects a JSON response matching the schema declared in `aiPrompt.ts` (`version`, `products[]`, `image_text`, `metadata`, `warnings`, `uncertain`).
+The app uses a single fixed multimodal model named `auto:vision`. The browser never chooses a provider or model; it sends a compact request body to the Netlify proxy with the captured image data and a prebuilt prompt.
+
+The request body follows the vision gateway contract:
+
+```json
+{
+  "model": "auto:vision",
+  "stream": false,
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        { "type": "text", "text": "<prompt>" },
+        { "type": "image_data", "mimeType": "image/png", "data": "<base64>" }
+      ]
+    }
+  ]
+}
+```
+
+`stream: false` is the correct choice for this use case because the app expects one final structured JSON document with product and price extraction, not a continuous chat stream. The server-side proxy then forwards the request to the configured gateway URL using the `AI_GATEWAY_VISION_KEY` secret and returns the server response as-is.
 
 ### Netlify Functions
 
 | Function | Method | Endpoint | Role |
 |---|---|---|---|
-| `ai-providers` | `GET` | `/.netlify/functions/ai-providers` | Returns the provider registry: `{ id, name, model, supportsVision, hasKey }[]`. `hasKey` reflects whether the matching `AI_KEY_*` env var is set on the server. **Never returns the key itself.** |
-| `ai-proxy` | `POST` | `/.netlify/functions/ai-proxy` | Injects `Authorization: Bearer <key>` server-side, forwards to the provider, and performs cyclic fallback across all key-bearing vision providers. Returns the provider's JSON verbatim. |
-
-### Provider registry
-
-Providers are defined server-side in [src/providerCatalog.ts](src/providerCatalog.ts) (also imported by the functions). Each entry hard-codes its endpoint, model, and request parameters; only the key is externalised as an env var.
-
-| Provider (`id`) | Endpoint | Model | Env var | Vision | JSON mode |
-|---|---|---|---|---|---|
-| `google-gemini` | `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions` | `gemini-2.0-flash` | `AI_KEY_GOOGLE_GEMINI` | ✓ | ✓ |
-| `groq` | `https://api.groq.com/openai/v1/chat/completions` | `meta-llama/llama-4-scout-17b-16e-instruct` | `AI_KEY_GROQ` | ✓ | ✓ |
-| `mistral` | `https://api.mistral.ai/v1/chat/completions` | `pixtral-12b-2409` | `AI_KEY_MISTRAL` | ✓ | ✓ |
-| `openrouter` | `https://openrouter.ai/api/v1/chat/completions` | `meta-llama/llama-3.2-11b-vision-instruct:free` | `AI_KEY_OPENROUTER` | ✓ | ✓ |
-| `huggingface` | `https://router.huggingface.co/v1/chat/completions` | `Qwen/Qwen2.5-VL-7B-Instruct` | `AI_KEY_HUGGINGFACE` | ✓ | ✗ |
-| `xai-grok` | `https://api.x.ai/v1/chat/completions` | `grok-2-vision-1212` | `AI_KEY_XAI_GROK` | ✓ | ✓ |
-
-All entries use `temperature: 0` and `max_tokens: 1024`. Only vision-capable providers (`supportsVision: true`) are offered for image analysis.
+| `ai-proxy` | `POST` | `/.netlify/functions/ai-proxy` | Validates the incoming payload, detects the fixed `auto:vision` model, and forwards it to the configured vision gateway using `AI_GATEWAY_VISION_KEY`. |
+| `ai-providers` | `GET` | `/.netlify/functions/ai-providers` | Kept as a compatibility surface for the provider registry; the app no longer exposes provider/model selection in the UI. |
 
 ### Setting the keys (Netlify)
 
-Set one env var per provider you want to enable. In the Netlify UI: **Site settings → Environment variables**, or via CLI:
+Set the gateway credentials as environment variables in the Netlify UI: **Site settings → Environment variables** or via CLI:
 
 ```bash
-netlify env:set AI_KEY_GROQ "your-groq-key"
-netlify env:set AI_KEY_GOOGLE_GEMINI "your-gemini-key"
-# …one per provider you want available
+netlify env:set AI_GATEWAY_VISION_KEY "your-vision-gateway-key"
+netlify env:set AI_GATEWAY_VISION_URL "https://your-gateway.example.com/vision"
 ```
 
-Locally, copy [.env.example](.env.example) to `.env` and fill the `AI_KEY_*` placeholders. The example file contains placeholders only — **never commit real keys**.
+The app expects the secret name `AI_GATEWAY_VISION_KEY` and a full gateway URL in `AI_GATEWAY_VISION_URL`. Locally, copy [.env.example](.env.example) to `.env` and fill those placeholders. The example file contains placeholders only — **never commit real keys**.
 
-### Server-side fallback policy
+### Server-side request policy
 
-- The proxy builds an attempt order: the client-selected provider first, then any `attemptOrder` hints, then every remaining vision provider that has a key on the server — deduplicated.
-- Each provider is tried with a 30 s `AbortController` timeout.
-- On `401`, `403`, `429`, any `5xx`, or a network/timeout error, the proxy advances to the next provider.
-- If no vision provider has a key, the proxy responds `502 no_providers_with_key`. If all attempts fail, it responds `502 all_providers_failed` with the list of attempted providers and statuses.
-- The public `sendImageToAI(imageBase64, prompt, opts)` API signature remains unchanged; the client sends its OpenAI-style body to the proxy with an optional `X-Provider-Id` header and **no** `Authorization` header.
-
-### Choosing a provider (client)
-
-The **Options** modal exposes a single **model dropdown** listing every vision provider. Providers without a server key are shown disabled with a `(no key)` suffix (the client learns this from `ai-providers`, never the key value). Selecting one stores a **temporary** choice in `sessionStorage` under `aiProviderSelection` with a 1-hour TTL (see [src/providerSelection.ts](src/providerSelection.ts)); after it expires or the session ends, the server's default fallback order applies again.
+- The client posts to `/.netlify/functions/ai-proxy` with a fixed `model: "auto:vision"`.
+- The proxy checks for the gateway secret and URL before forwarding the request.
+- The client sends no `Authorization` header when proxy mode is enabled.
+- The app waits for a final JSON answer and shows a spinner until the response arrives.
 
 ### Local development
 
@@ -173,7 +171,7 @@ npm install -g netlify-cli   # once
 netlify dev                  # serves the app + /.netlify/functions/*
 ```
 
-`netlify dev` reads `.env` for the `AI_KEY_*` variables and proxies function calls locally. Plain `npm run dev` serves the SPA but the AI functions will not be available.
+`netlify dev` reads `.env` for the `AI_GATEWAY_*` variables and proxies function calls locally. Plain `npm run dev` serves the SPA but the AI functions will not be available.
 
 ---
 
@@ -269,17 +267,6 @@ Server-side provider registry, imported by both the client (for typing/UI) and t
 - `getVisionProviders()` — entries with `supportsVision: true`; the pool eligible for image analysis and fallback.
 
 No API keys are stored here; only the `envKey` name that the server reads from Netlify Environment Variables.
-
----
-
-### `providerSelection.ts`
-
-Client-side **temporary** provider selection (id only, never a key).
-
-- `SELECTION_TTL_MS = 3_600_000` (1 hour).
-- `getSelectedProvider()` — reads `sessionStorage["aiProviderSelection"]`, validates the id against the catalog, and clears it when invalid or expired.
-- `setSelectedProvider(id)` — validates against the catalog and stores the id with a timestamp.
-- `clearSelection()` — removes the stored selection.
 
 ---
 
@@ -436,8 +423,8 @@ Application entry point. Bootstraps services, injects modals, and binds event li
 
 - `createOptionsModal()` — injects `optionsModal.html` once and returns a `Modal` for `#options-panel` / `#options-overlay`.
 - `initOptionTooltips()` — event-delegated tooltips driven by `data-tip` attributes; descriptions come from `getOptionTooltips(lang)`.
-- `populateModelDropdown(select, providers, selectedId?)` — renders one `<option>` per vision provider; providers without a server key are disabled with a `(no key)` suffix and cannot be preselected.
-- The HTML exposes: the AI provider dropdown (`#opt-ai-model`), the `#opt-require-manual-confirm` checkbox, currency selector, coupon fields, and import/export buttons. The `data-tip` keys used in the HTML are `"Currency"`, `"AI Image Model"`, `"Require Manual Confirm"`, `"Use Coupons"`, `"Value"`, `"Threshold"`, `"Import"`.
+- The modal no longer exposes a model/provider selector. The fixed `auto:vision` gateway is chosen server-side and the UI only exposes the non-AI settings and confirmation toggles.
+- The HTML exposes the `#opt-require-manual-confirm` checkbox, currency selector, coupon fields, and import/export buttons. The supported `data-tip` keys are `"Currency"`, `"Require Manual Confirm"`, `"Use Coupons"`, `"Value"`, `"Threshold"`, `"Import"`.
 
 ---
 
@@ -511,7 +498,7 @@ All tests live in `tests/` and run with Vitest (jsdom environment).
 | `aiPrompt.test.ts` | `aiPrompt.ts` | `IMAGE_EXTRACTION_PROMPT` snapshot, schema validation, fixture parsing, `toPriceItems` rules |
 | `api.test.ts` | `api.ts` | `sendImageToAI` success / envelope / proxy transport / timeout / HTTP error / invalid JSON |
 | `addModal.test.ts` | `addModalController` + HTML | Scan success → editable rows → confirm; no-key fallback; proxy header wiring; `requireManualConfirm: false` auto-add |
-| `optionsModal.test.ts` | `optionsModal.ts` | Tooltip wiring, model dropdown population, disabled keyless providers |
+| `optionsModal.test.ts` | `optionsModal.ts` | Tooltip wiring, no-model UI contract, confirmation checkbox remains available |
 | `tutorial.test.ts` | `tutorial.ts` | IT/EN content, tooltip key extraction |
 | `yamlConfig.test.ts` | `yamlConfig.ts` | Flat values, blank lines, comments, nested blocks, round-trip of non-AI fields, silent ignore of legacy keys |
 
@@ -534,16 +521,16 @@ npx vitest run --coverage
 ```
 Camera (camera.ts)
   └─ captureCropped(cropRatio)
-       │  base64 JPEG
+       │  PNG base64
        ▼
 openAddModalForScan (modals/addModalController.ts)
-       │  mode-analyze → spinner
+       │  mode-analyze → spinner while waiting for the gateway
        ▼
 sendImageToAI (api.ts)
-       │  POST /.netlify/functions/ai-proxy  (X-Provider-Id, no Authorization)
+       │  POST /.netlify/functions/ai-proxy  (no Authorization header)
        ▼
-ai-proxy (netlify/functions)  ── injects AI_KEY_* + cyclic fallback ──►  provider
-       │  AiExtractionResult (verbatim provider JSON)
+ai-proxy (netlify/functions)  ── validates model "auto:vision" + injects AI_GATEWAY_VISION_KEY ──►  vision gateway
+       │  AiExtractionResult (JSON document)
        ▼
 toPriceItems (aiPrompt.ts)
        │  editable rows in mode-results

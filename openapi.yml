@@ -1,0 +1,403 @@
+openapi: 3.1.0
+info:
+  title: AI Gateway API
+  version: 0.1.0
+  description: >
+    Reusable AI Gateway on Netlify Functions. Centralizes AI provider calls
+    behind API-key–protected endpoints with SSE streaming support.
+servers:
+  - url: https://your-site.netlify.app/api
+    description: Netlify deployment
+security:
+  - AppApiKey: []
+paths:
+  /health:
+    get:
+      summary: Health check (public, no auth)
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  service: { type: string }
+                  version: { type: string }
+  /providers:
+    get:
+      summary: List providers and models
+      responses:
+        "200":
+          description: Providers and models
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        label: { type: string }
+                        available: { type: boolean }
+                  models:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /chat:
+    post:
+      summary: Multi-turn chat (JSON or SSE)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChatRequest" }
+      responses:
+        "200":
+          description: >
+            JSON ChatResponse when stream=false, or text/event-stream with
+            meta/delta/done/error events when stream=true.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatResponse" }
+            text/event-stream:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /complete:
+    post:
+      summary: Single-turn completion (JSON or SSE)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CompleteRequest" }
+      responses:
+        "200":
+          description: JSON ChatResponse or SSE stream
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatResponse" }
+            text/event-stream:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /vision:
+    post:
+      summary: Multimodal chat with image input
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChatRequest" }
+      responses:
+        "200":
+          description: JSON ChatResponse or SSE stream
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatResponse" }
+            text/event-stream:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /embeddings:
+    post:
+      summary: Create embeddings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EmbeddingsRequest" }
+      responses:
+        "200":
+          description: Embedding vectors
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmbeddingsResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /model/{alias}:
+    post:
+      summary: Dedicated endpoint for a specific model alias
+      parameters:
+        - name: alias
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                messages:
+                  type: array
+                  items: { $ref: "#/components/schemas/ChatMessage" }
+                stream: { type: boolean }
+                temperature: { type: number }
+                maxOutputTokens: { type: integer }
+      responses:
+        "200":
+          description: JSON ChatResponse or SSE stream
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /keys:
+    post:
+      summary: Create an app API key (admin only)
+      security:
+        - AdminKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateKeyRequest" }
+      responses:
+        "201":
+          description: Created key (plaintext shown once)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appId: { type: string }
+                  keyId: { type: string }
+                  apiKey: { type: string }
+                  warning: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    get:
+      summary: List app API keys (admin only, no secrets)
+      security:
+        - AdminKey: []
+      responses:
+        "200":
+          description: Key list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items: { $ref: "#/components/schemas/PublicAppKey" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /keys/revoke:
+    post:
+      summary: Revoke an app API key (admin only)
+      security:
+        - AdminKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [keyId]
+              properties:
+                keyId: { type: string }
+      responses:
+        "200":
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /keys/rotate:
+    post:
+      summary: Rotate an app API key (admin only)
+      security:
+        - AdminKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [keyId]
+              properties:
+                keyId: { type: string }
+                revokeOldImmediately: { type: boolean }
+      responses:
+        "201":
+          description: New key created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appId: { type: string }
+                  keyId: { type: string }
+                  apiKey: { type: string }
+                  previousKeyId: { type: string }
+                  warning: { type: string }
+        "404": { $ref: "#/components/responses/NotFound" }
+components:
+  securitySchemes:
+    AppApiKey:
+      type: http
+      scheme: bearer
+      description: App API key (aigw_live_...). Also accepted via X-AI-Gateway-Key.
+    AdminKey:
+      type: http
+      scheme: bearer
+      description: AI_GATEWAY_ADMIN_KEY for key management endpoints.
+  responses:
+    Unauthorized:
+      description: Missing or invalid key
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    InvalidRequest:
+      description: Invalid request payload
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              enum:
+                - UNAUTHORIZED
+                - FORBIDDEN_ORIGIN
+                - INVALID_REQUEST
+                - MODEL_NOT_FOUND
+                - CAPABILITY_NOT_SUPPORTED
+                - PROVIDER_UNAVAILABLE
+                - RATE_LIMITED
+                - UPSTREAM_ERROR
+                - TIMEOUT
+                - NOT_FOUND
+                - METHOD_NOT_ALLOWED
+                - INTERNAL_ERROR
+            message: { type: string }
+    ContentPart:
+      oneOf:
+        - type: object
+          properties:
+            type: { type: string, enum: [text] }
+            text: { type: string }
+        - type: object
+          properties:
+            type: { type: string, enum: [image_url] }
+            imageUrl: { type: string }
+        - type: object
+          properties:
+            type: { type: string, enum: [image_data] }
+            mimeType: { type: string, enum: ["image/png", "image/jpeg", "image/webp"] }
+            data: { type: string }
+    ChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role: { type: string, enum: [system, user, assistant] }
+        content:
+          oneOf:
+            - type: string
+            - type: array
+              items: { $ref: "#/components/schemas/ContentPart" }
+    ChatRequest:
+      type: object
+      required: [model, messages]
+      properties:
+        model: { type: string }
+        messages:
+          type: array
+          items: { $ref: "#/components/schemas/ChatMessage" }
+        stream: { type: boolean }
+        temperature: { type: number }
+        maxOutputTokens: { type: integer }
+    CompleteRequest:
+      type: object
+      required: [model, input]
+      properties:
+        model: { type: string }
+        input: { type: string }
+        system: { type: string }
+        stream: { type: boolean }
+        temperature: { type: number }
+        maxOutputTokens: { type: integer }
+    ChatResponse:
+      type: object
+      properties:
+        provider: { type: string }
+        model: { type: string }
+        text: { type: string }
+    EmbeddingsRequest:
+      type: object
+      required: [model, input]
+      properties:
+        model: { type: string }
+        input:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+    EmbeddingsResponse:
+      type: object
+      properties:
+        provider: { type: string }
+        model: { type: string }
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              index: { type: integer }
+              embedding:
+                type: array
+                items: { type: number }
+    CreateKeyRequest:
+      type: object
+      required: [appId, label]
+      properties:
+        appId: { type: string }
+        label: { type: string }
+        allowedOrigins:
+          type: array
+          items: { type: string }
+        limits:
+          type: object
+          properties:
+            requestsPerMinute: { type: integer }
+            requestsPerDay: { type: integer }
+        enabledCapabilities:
+          type: array
+          items:
+            type: string
+            enum: [chat, complete, vision, embeddings, models]
+    PublicAppKey:
+      type: object
+      properties:
+        keyId: { type: string }
+        appId: { type: string }
+        label: { type: string }
+        status: { type: string, enum: [active, revoked, rotating] }
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: string, format: date-time }
+        allowedOrigins:
+          type: array
+          items: { type: string }
