@@ -144,7 +144,7 @@ The request body follows the vision gateway contract:
 | `ai-proxy` | `POST` | `/.netlify/functions/ai-proxy` | Validates the incoming payload, detects the fixed `auto:vision` model, and forwards it to the configured vision gateway using `AI_GATEWAY_VISION_KEY`. |
 | `ai-providers` | `GET` | `/.netlify/functions/ai-providers` | Kept as a compatibility surface for the provider registry; the app no longer exposes provider/model selection in the UI. |
 
-### Setting the keys (Netlify)
+### Setting the fixed gateway (Netlify)
 
 Set the gateway credentials as environment variables in the Netlify UI: **Site settings → Environment variables** or via CLI:
 
@@ -157,9 +157,9 @@ The app expects the secret name `AI_GATEWAY_VISION_KEY` and a full gateway URL i
 
 ### Server-side request policy
 
-- The client posts to `/.netlify/functions/ai-proxy` with a fixed `model: "auto:vision"`.
-- The proxy checks for the gateway secret and URL before forwarding the request.
-- The client sends no `Authorization` header when proxy mode is enabled.
+- The browser never chooses a provider or model; it always sends the fixed `model: "auto:vision"`.
+- The client posts to `/.netlify/functions/ai-proxy`, which checks the gateway secret and URL before forwarding the request.
+- The client sends no `Authorization` header when proxy mode is enabled because the secret stays server-side.
 - The app waits for a final JSON answer and shows a spinner until the response arrives.
 
 ### Local development
@@ -194,7 +194,7 @@ There are no client-side keys to transfer: provider keys now live only in Netlif
 - It is sent **only** to the `ai-proxy` Netlify Function, which forwards it to the selected AI provider using a server-side key.
 - API keys are stored **only** as Netlify Environment Variables on the server; the browser never receives them.
 - Nothing is uploaded in the background; there is no analytics or telemetry pipeline in this codebase.
-- The only client-side AI state is a temporary provider **selection** (an id string, no key) in `sessionStorage` with a 1-hour TTL.
+- No AI provider or model selection is stored in the browser. The only client-side state is the local app preferences, not any API secret, endpoint, or model choice.
 
 ---
 
@@ -373,7 +373,7 @@ Self-contained tutorial content for Italian and English.
 
 - `translations: Record<Lang, TutorialContent>` — IT + EN trees. The "⚙️ Opzioni" / "⚙️ Options" section drives `getOptionTooltips` with colon-separated `key: description` lines.
 - `renderTutorial(lang)` — renders the tree to HTML.
-- `getOptionTooltips(lang)` — dynamically extracts tooltip keys and descriptions from the Options section of the tutorial content (parses `key: description` lines). Keys present: `"Currency"`, `"AI Image Endpoint"`, `"AI Image Model"`, `"AI Image Key"`, `"AI Image Timeout"`, `"Use Image Proxy"`, `"Require Manual Confirm"`, `"Use Coupons"`, `"Value"`, `"Threshold"`, `"Import"`.
+- `getOptionTooltips(lang)` — dynamically extracts tooltip keys and descriptions from the Options section of the tutorial content (parses `key: description` lines). Keys present: `"Currency"`, `"Require Manual Confirm"`, `"Use Coupons"`, `"Value"`, `"Threshold"`, `"Import"`.
 
 ---
 

@@ -89,24 +89,32 @@ describe("getOptionTooltips", () => {
     expect(tips["Import (📁)"]).toBeUndefined();
   });
 
-  it("'it' map exposes AI image tooltip keys", () => {
+  it("'it' map exposes only the supported option keys", () => {
     const tips = getOptionTooltips("it");
-    expect(tips["AI Image Endpoint"]).toBeDefined();
-    expect(tips["AI Image Model"]).toBeDefined();
-    expect(tips["AI Image Key"]).toBeDefined();
-    expect(tips["AI Image Timeout"]).toBeDefined();
-    expect(tips["Use Image Proxy"]).toBeDefined();
+    expect(tips["Currency"]).toBeDefined();
     expect(tips["Require Manual Confirm"]).toBeDefined();
+    expect(tips["Use Coupons"]).toBeDefined();
+    expect(tips["Value"]).toBeDefined();
+    expect(tips["Threshold"]).toBeDefined();
+    expect(tips["Import"]).toBeDefined();
+    expect(tips["AI Image Model"]).toBeUndefined();
+    expect(tips["AI Image Endpoint"]).toBeUndefined();
+    expect(tips["AI Image Key"]).toBeUndefined();
+    expect(tips["Use Image Proxy"]).toBeUndefined();
   });
 
-  it("'en' map exposes AI image tooltip keys", () => {
+  it("'en' map exposes only the supported option keys", () => {
     const tips = getOptionTooltips("en");
-    expect(tips["AI Image Endpoint"]).toBeDefined();
-    expect(tips["AI Image Model"]).toBeDefined();
-    expect(tips["AI Image Key"]).toBeDefined();
-    expect(tips["AI Image Timeout"]).toBeDefined();
-    expect(tips["Use Image Proxy"]).toBeDefined();
+    expect(tips["Currency"]).toBeDefined();
     expect(tips["Require Manual Confirm"]).toBeDefined();
+    expect(tips["Use Coupons"]).toBeDefined();
+    expect(tips["Value"]).toBeDefined();
+    expect(tips["Threshold"]).toBeDefined();
+    expect(tips["Import"]).toBeDefined();
+    expect(tips["AI Image Model"]).toBeUndefined();
+    expect(tips["AI Image Endpoint"]).toBeUndefined();
+    expect(tips["AI Image Key"]).toBeUndefined();
+    expect(tips["Use Image Proxy"]).toBeUndefined();
   });
 
   it("does not expose legacy tooltip keys in 'it'", () => {
@@ -117,6 +125,8 @@ describe("getOptionTooltips", () => {
     expect(tips["isTable"]).toBeUndefined();
     expect(tips["AI Client"]).toBeUndefined();
     expect(tips["AI Key"]).toBeUndefined();
+    expect(tips["AI Image Model"]).toBeUndefined();
+    expect(tips["AI Image Endpoint"]).toBeUndefined();
   });
 
   it("does not expose legacy tooltip keys in 'en'", () => {
@@ -127,6 +137,8 @@ describe("getOptionTooltips", () => {
     expect(tips["isTable"]).toBeUndefined();
     expect(tips["AI Client"]).toBeUndefined();
     expect(tips["AI Key"]).toBeUndefined();
+    expect(tips["AI Image Model"]).toBeUndefined();
+    expect(tips["AI Image Endpoint"]).toBeUndefined();
   });
 });
 
