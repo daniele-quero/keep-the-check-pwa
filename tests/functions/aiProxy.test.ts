@@ -314,4 +314,31 @@ describe("ai-proxy function", () => {
     expect(sentBody.stream).toBe(false);
     expect(sentBody.messages[0].content[1].data).toBe(base64);
   });
+
+  it("normalizes compact auto:vision payloads before forwarding them to the vision gateway", async () => {
+    vi.stubEnv("AI_GATEWAY_VISION_URL", "https://ai-gateway-dq.netlify.app/api/vision");
+    vi.stubEnv("AI_GATEWAY_VISION_KEY", "gateway-secret");
+    mockFetch.mockResolvedValueOnce(okResponse(EXTRACTION_JSON));
+
+    const res = await handler(
+      proxyReq({
+        model: "auto:vision",
+        imageBase64: "data:image/png;base64,AAAA",
+        prompt: "Leggi i prezzi",
+        mimeType: "image/png",
+      })
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [, init] = mockFetch.mock.calls[0];
+    const sentBody = JSON.parse(init.body);
+    expect(sentBody.model).toBe("auto:vision");
+    expect(sentBody.stream).toBe(false);
+    expect(sentBody.messages[0].content[0].text).toBe("Leggi i prezzi");
+    expect(sentBody.messages[0].content[1].type).toBe("image_data");
+    expect(sentBody.messages[0].content[1].data).toBe("AAAA");
+    expect(sentBody.imageBase64).toBeUndefined();
+    expect(sentBody.prompt).toBeUndefined();
+  });
 });

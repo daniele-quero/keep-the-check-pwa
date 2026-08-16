@@ -86,6 +86,61 @@ function buildOrder(
   return order;
 }
 
+function normalizeUnifiedVisionPayload(
+  payload: Record<string, unknown>
+): Record<string, unknown> {
+  const normalizedModel =
+    typeof payload.model === "string" && payload.model.trim().length > 0
+      ? payload.model.trim()
+      : "auto:vision";
+
+  const prompt =
+    typeof payload.prompt === "string"
+      ? payload.prompt
+      : "";
+
+  const rawBase64 = String(
+    typeof payload.imageBase64 === "string"
+      ? payload.imageBase64
+      : payload.image_data ?? ""
+  ).replace(DATA_URL_PREFIX_RE, "");
+
+  const mimeType =
+    typeof payload.mimeType === "string"
+      ? payload.mimeType
+      : typeof payload.mime_type === "string"
+        ? payload.mime_type
+        : "image/png";
+
+  const messages = Array.isArray(payload.messages) && payload.messages.length > 0
+    ? payload.messages
+    : [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_data", mimeType, data: rawBase64 },
+          ],
+        },
+      ];
+
+  const normalizedPayload: Record<string, unknown> = {
+    model: normalizedModel,
+    stream: false,
+    messages,
+  };
+
+  // Strip client control fields so they never reach the upstream gateway.
+  delete normalizedPayload.providerId;
+  delete normalizedPayload.attemptOrder;
+  delete normalizedPayload.imageBase64;
+  delete normalizedPayload.prompt;
+  delete normalizedPayload.mimeType;
+  delete normalizedPayload.mime_type;
+
+  return normalizedPayload;
+}
+
 function buildUpstreamBody(
   payload: Record<string, unknown>,
   entry: ProviderCatalogEntry
@@ -193,7 +248,7 @@ export default async function handler(req: Request): Promise<Response> {
     typeof payload.model === "string" &&
     payload.model.trim().toLowerCase() === "auto:vision";
   if (isUnifiedVisionRequest) {
-    return forwardToVisionGateway(payload);
+    return forwardToVisionGateway(normalizeUnifiedVisionPayload(payload));
   }
 
   const selectedId =
