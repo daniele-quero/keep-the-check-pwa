@@ -17,7 +17,13 @@ import {
 import { IMAGE_EXTRACTION_PROMPT } from "./aiPrompt";
 import { createPriceItem, generateId, CurrencyCode } from "./models";
 import type { PriceItem } from "./models";
-import { uiRefs, populateSelect, updateThresholdLabel, addResultItem } from "./ui";
+import {
+  uiRefs,
+  populateSelect,
+  updateThresholdLabel,
+  addResultItem,
+  setCameraPreviewState,
+} from "./ui";
 import { parseSimpleYaml, applyYamlToModal, exportConfigYaml } from "./yamlConfig";
 import { createTutorialModal, initTutorialLang } from "./modals/tutorialModal";
 import { isMobileDevice, showDesktopNotice } from "./mobileGate";
@@ -149,7 +155,6 @@ export async function initApp(): Promise<void> {
   async function doScan(): Promise<void> {
     if (scanning) return;
     scanning = true;
-    uiRefs.btnScan.disabled = true;
     uiRefs.spinner.classList.add("active");
 
     try {
@@ -157,6 +162,7 @@ export async function initApp(): Promise<void> {
       const base64 = camera.captureCropped(cropVal);
       if (!base64) throw new Error("Camera capture failed");
 
+      setCameraPreviewState(true, `data:image/png;base64,${base64}`);
       addModalController.reset();
       editingItemId = null;
       const result = await addModalController.analyzeImage(base64);
@@ -169,7 +175,7 @@ export async function initApp(): Promise<void> {
       addResultItem({ id: generateId(), product: `[Error] ${msg}`, price: 0, quantity: 1 }, true);
     } finally {
       scanning = false;
-      uiRefs.btnScan.disabled = false;
+      setCameraPreviewState(false);
       uiRefs.spinner.classList.remove("active");
     }
   }

@@ -19,8 +19,31 @@ declare const process: { env: Record<string, string | undefined> };
 
 const PROVIDER_TIMEOUT_MS = 30000;
 const DATA_URL_PREFIX_RE = /^data:image\/[a-zA-Z0-9.+-]+;base64,/;
-const VISION_GATEWAY_URL = process.env.AI_GATEWAY_VISION_URL;
-const VISION_GATEWAY_KEY = process.env.AI_GATEWAY_VISION_KEY;
+
+function getVisionGatewayConfig(): { url: string | null; key: string | null; message: string | null } {
+  const url = process.env.AI_GATEWAY_VISION_URL?.trim();
+  const key = process.env.AI_GATEWAY_VISION_KEY?.trim();
+
+  if (!url || !key) {
+    return {
+      url: null,
+      key: null,
+      message: "AI_GATEWAY_VISION_URL and AI_GATEWAY_VISION_KEY are not set",
+    };
+  }
+
+  try {
+    new URL(url);
+  } catch {
+    return {
+      url: null,
+      key: null,
+      message: "AI_GATEWAY_VISION_URL is not a valid absolute URL",
+    };
+  }
+
+  return { url, key, message: null };
+}
 
 interface ProxyAttempt {
   providerId: string;
@@ -118,18 +141,19 @@ function isCyclableStatus(status: number): boolean {
 }
 
 async function forwardToVisionGateway(payload: Record<string, unknown>): Promise<Response> {
-  if (!VISION_GATEWAY_URL || !VISION_GATEWAY_KEY) {
+  const gateway = getVisionGatewayConfig();
+  if (!gateway.url || !gateway.key) {
     return json(502, {
       error: "vision_gateway_not_configured",
-      message: "AI_GATEWAY_VISION_URL and AI_GATEWAY_VISION_KEY are not set",
+      message: gateway.message,
     });
   }
 
-  const res = await fetch(VISION_GATEWAY_URL, {
+  const res = await fetch(gateway.url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${VISION_GATEWAY_KEY}`,
+      Authorization: `Bearer ${gateway.key}`,
     },
     body: JSON.stringify(payload),
   });
