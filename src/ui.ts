@@ -77,6 +77,7 @@ export function addResultItem(item: PriceItem, isError = false, onEdit?: (item: 
 
 export const uiRefs = {
   get video()          { return document.getElementById("preview") as HTMLVideoElement; },
+  get capturedPreview() { return document.getElementById("captured-preview") as HTMLImageElement; },
   get maskTop()        { return document.getElementById("camera-mask-top") as HTMLElement; },
   get maskBottom()     { return document.getElementById("camera-mask") as HTMLElement; },
   get spinner()        { return document.getElementById("spinner") as HTMLElement; },
@@ -111,6 +112,32 @@ export const uiRefs = {
   get addQtyPlus()     { return document.getElementById("add-qty-plus") as HTMLButtonElement; },
   get addQtyDisplay()  { return document.getElementById("add-qty-display") as HTMLElement; },
 };
+
+export function setCameraPreviewState(isFrozen: boolean, snapshotData?: string | null): void {
+  const video = uiRefs.video;
+  const capturedPreview = uiRefs.capturedPreview;
+  const scanButton = uiRefs.btnScan;
+
+  if (isFrozen) {
+    const snapshot = snapshotData && snapshotData.startsWith("data:")
+      ? snapshotData
+      : snapshotData
+        ? `data:image/png;base64,${snapshotData}`
+        : "";
+    capturedPreview.src = snapshot;
+    capturedPreview.hidden = !snapshot;
+    video.style.display = snapshot ? "none" : "";
+    scanButton.disabled = true;
+    scanButton.setAttribute("aria-disabled", "true");
+    return;
+  }
+
+  capturedPreview.removeAttribute("src");
+  capturedPreview.hidden = true;
+  video.style.display = "";
+  scanButton.disabled = false;
+  scanButton.removeAttribute("aria-disabled");
+}
 
 export function populateSelect(sel: HTMLSelectElement, values: string[], selected: string): void {
   sel.innerHTML = "";

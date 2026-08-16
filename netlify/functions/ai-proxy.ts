@@ -19,8 +19,31 @@ declare const process: { env: Record<string, string | undefined> };
 
 const PROVIDER_TIMEOUT_MS = 30000;
 const DATA_URL_PREFIX_RE = /^data:image\/[a-zA-Z0-9.+-]+;base64,/;
-const VISION_GATEWAY_URL = process.env.AI_GATEWAY_VISION_URL;
-const VISION_GATEWAY_KEY = process.env.AI_GATEWAY_VISION_KEY;
+
+function getVisionGatewayConfig(): { url: string | null; key: string | null; message: string | null } {
+  const url = process.env.AI_GATEWAY_VISION_URL?.trim();
+  const key = process.env.AI_GATEWAY_VISION_KEY?.trim();
+
+  if (!url || !key) {
+    return {
+      url: null,
+      key: null,
+      message: "AI_GATEWAY_VISION_URL and AI_GATEWAY_VISION_KEY are not set",
+    };
+  }
+
+  try {
+    new URL(url);
+  } catch {
+    return {
+      url: null,
+      key: null,
+      message: "AI_GATEWAY_VISION_URL is not a valid absolute URL",
+    };
+  }
+
+  return { url, key, message: null };
+}
 
 interface ProxyAttempt {
   providerId: string;
@@ -61,6 +84,61 @@ function buildOrder(
   for (const entry of eligible) add(entry.id);
 
   return order;
+}
+
+function normalizeUnifiedVisionPayload(
+  payload: Record<string, unknown>
+): Record<string, unknown> {
+  const normalizedModel =
+    typeof payload.model === "string" && payload.model.trim().length > 0
+      ? payload.model.trim()
+      : "auto:vision";
+
+  const prompt =
+    typeof payload.prompt === "string"
+      ? payload.prompt
+      : "";
+
+  const rawBase64 = String(
+    typeof payload.imageBase64 === "string"
+      ? payload.imageBase64
+      : payload.image_data ?? ""
+  ).replace(DATA_URL_PREFIX_RE, "");
+
+  const mimeType =
+    typeof payload.mimeType === "string"
+      ? payload.mimeType
+      : typeof payload.mime_type === "string"
+        ? payload.mime_type
+        : "image/png";
+
+  const messages = Array.isArray(payload.messages) && payload.messages.length > 0
+    ? payload.messages
+    : [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_data", mimeType, data: rawBase64 },
+          ],
+        },
+      ];
+
+  const normalizedPayload: Record<string, unknown> = {
+    model: normalizedModel,
+    stream: false,
+    messages,
+  };
+
+  // Strip client control fields so they never reach the upstream gateway.
+  delete normalizedPayload.providerId;
+  delete normalizedPayload.attemptOrder;
+  delete normalizedPayload.imageBase64;
+  delete normalizedPayload.prompt;
+  delete normalizedPayload.mimeType;
+  delete normalizedPayload.mime_type;
+
+  return normalizedPayload;
 }
 
 function buildUpstreamBody(
@@ -118,18 +196,19 @@ function isCyclableStatus(status: number): boolean {
 }
 
 async function forwardToVisionGateway(payload: Record<string, unknown>): Promise<Response> {
-  if (!VISION_GATEWAY_URL || !VISION_GATEWAY_KEY) {
+  const gateway = getVisionGatewayConfig();
+  if (!gateway.url || !gateway.key) {
     return json(502, {
       error: "vision_gateway_not_configured",
-      message: "AI_GATEWAY_VISION_URL and AI_GATEWAY_VISION_KEY are not set",
+      message: gateway.message,
     });
   }
 
-  const res = await fetch(VISION_GATEWAY_URL, {
+  const res = await fetch(gateway.url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${VISION_GATEWAY_KEY}`,
+      Authorization: `Bearer ${gateway.key}`,
     },
     body: JSON.stringify(payload),
   });
@@ -169,7 +248,7 @@ export default async function handler(req: Request): Promise<Response> {
     typeof payload.model === "string" &&
     payload.model.trim().toLowerCase() === "auto:vision";
   if (isUnifiedVisionRequest) {
-    return forwardToVisionGateway(payload);
+    return forwardToVisionGateway(normalizeUnifiedVisionPayload(payload));
   }
 
   const selectedId =

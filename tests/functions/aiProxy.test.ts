@@ -280,4 +280,65 @@ describe("ai-proxy function", () => {
     expect(sentBody.imageBase64).toBeUndefined();
     expect(sentBody.prompt).toBeUndefined();
   });
+
+  it("reads the vision gateway secret and URL at request time and forwards the base64 payload without streaming", async () => {
+    vi.stubEnv("AI_GATEWAY_VISION_URL", "https://ai-gateway-dq.netlify.app/api/vision");
+    vi.stubEnv("AI_GATEWAY_VISION_KEY", "gateway-secret");
+    const base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAF";
+    const body = {
+      model: "auto:vision",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Leggi i prezzi" },
+            { type: "image_data", mimeType: "image/png", data: base64 },
+          ],
+        },
+      ],
+    };
+    mockFetch.mockResolvedValueOnce(okResponse(EXTRACTION_JSON));
+
+    const res = await handler(proxyReq(body));
+
+    expect(res.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "https://ai-gateway-dq.netlify.app/api/vision"
+    );
+    const [, init] = mockFetch.mock.calls[0];
+    expect(init.headers.Authorization).toBe("Bearer gateway-secret");
+    const sentBody = JSON.parse(init.body);
+    expect(sentBody.model).toBe("auto:vision");
+    expect(sentBody.stream).toBe(false);
+    expect(sentBody.messages[0].content[1].data).toBe(base64);
+  });
+
+  it("normalizes compact auto:vision payloads before forwarding them to the vision gateway", async () => {
+    vi.stubEnv("AI_GATEWAY_VISION_URL", "https://ai-gateway-dq.netlify.app/api/vision");
+    vi.stubEnv("AI_GATEWAY_VISION_KEY", "gateway-secret");
+    mockFetch.mockResolvedValueOnce(okResponse(EXTRACTION_JSON));
+
+    const res = await handler(
+      proxyReq({
+        model: "auto:vision",
+        imageBase64: "data:image/png;base64,AAAA",
+        prompt: "Leggi i prezzi",
+        mimeType: "image/png",
+      })
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [, init] = mockFetch.mock.calls[0];
+    const sentBody = JSON.parse(init.body);
+    expect(sentBody.model).toBe("auto:vision");
+    expect(sentBody.stream).toBe(false);
+    expect(sentBody.messages[0].content[0].text).toBe("Leggi i prezzi");
+    expect(sentBody.messages[0].content[1].type).toBe("image_data");
+    expect(sentBody.messages[0].content[1].data).toBe("AAAA");
+    expect(sentBody.imageBase64).toBeUndefined();
+    expect(sentBody.prompt).toBeUndefined();
+  });
 });

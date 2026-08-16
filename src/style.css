@@ -104,6 +104,18 @@ body.desktop-blocked {
   box-shadow: 0 8px 18px rgba(90, 41, 22, 0.16);
 }
 
+#captured-preview {
+  position: absolute;
+  inset: 10px 12px 8px;
+  width: calc(100% - 24px);
+  height: calc(100% - 18px);
+  object-fit: cover;
+  border-radius: 14px;
+  border: 2px solid rgba(122, 63, 42, 0.28);
+  box-shadow: 0 8px 18px rgba(90, 41, 22, 0.16);
+  background: rgba(255, 255, 255, 0.25);
+}
+
 #camera-mask {
   position: absolute;
   bottom: 0;
@@ -364,6 +376,17 @@ body.desktop-blocked {
 
 .action-btn:active {
   transform: scale(0.92);
+}
+
+#btn-scan:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.9);
+  box-shadow: none;
+}
+
+#btn-scan:disabled:active {
+  transform: none;
 }
 
 /* ??? Modal Overlay ??? */
