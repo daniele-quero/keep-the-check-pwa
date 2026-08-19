@@ -275,8 +275,8 @@ No API keys are stored here; only the `envKey` name that the server reads from N
 Wraps `MediaDevices` to access the rear camera and capture frames.
 
 - `start()` / `stop()` / `get isActive()`.
-- `capture(): string | null` — full-frame JPEG base64 (quality 0.75, no data-URL prefix).
-- `captureCropped(cropRatio): string | null` — visible-rectangle aware capture that accounts for `object-fit: cover` and applies the user's crop slider.
+- `capture(): string | null` — full-frame JPEG base64 (quality 0.82, no data-URL prefix), bounded to 1280 pixels on its longest edge.
+- `captureCropped(cropRatio): string | null` — visible-rectangle aware capture that accounts for `object-fit: cover`, applies the user's crop slider, and is JPEG-encoded at the same bounded size.
 
 ---
 
@@ -311,7 +311,7 @@ Single network function for the scan pipeline. No DOM access.
 | `endpoint` | Target URL. In proxy mode this is the `ai-proxy` Netlify Function path. |
 | `apiKey` | Bearer token. **Not used in proxy mode** — no `Authorization` header is attached. |
 | `model` | Optional model identifier. |
-| `timeoutMs` | Default 30000 ms; enforced via `AbortController`. |
+| `timeoutMs` | Default 28000 ms; the `ai-proxy` gateway deadline is 25000 ms, leaving time for its structured timeout response to reach the browser before Netlify's 30s function budget. |
 | `signal` | Optional caller-owned `AbortSignal` (composed with the timeout). |
 | `useProxy` | When `true`, posts without an `Authorization` header. |
 | `extraHeaders` | Optional extra request headers (e.g. `X-Provider-Id` carrying the client selection). |
@@ -497,6 +497,7 @@ All tests live in `tests/` and run with Vitest (jsdom environment).
 | `listManager.test.ts` | `listManager.ts` | Add/remove items, quantity clamping, total arithmetic, coupon math, legacy-item defaulting |
 | `aiPrompt.test.ts` | `aiPrompt.ts` | `IMAGE_EXTRACTION_PROMPT` snapshot, schema validation, fixture parsing, `toPriceItems` rules |
 | `api.test.ts` | `api.ts` | `sendImageToAI` success / envelope / proxy transport / timeout / HTTP error / invalid JSON |
+| `camera.test.ts` | `camera.ts` | Bounded output dimensions while preserving the captured aspect ratio |
 | `addModal.test.ts` | `addModalController` + HTML | Scan success → editable rows → confirm; no-key fallback; proxy header wiring; `requireManualConfirm: false` auto-add |
 | `optionsModal.test.ts` | `optionsModal.ts` | Tooltip wiring, no-model UI contract, confirmation checkbox remains available |
 | `tutorial.test.ts` | `tutorial.ts` | IT/EN content, tooltip key extraction |
@@ -521,7 +522,7 @@ npx vitest run --coverage
 ```
 Camera (camera.ts)
   └─ captureCropped(cropRatio)
-       │  PNG base64
+       │  bounded JPEG base64
        ▼
 openAddModalForScan (modals/addModalController.ts)
        │  mode-analyze → spinner while waiting for the gateway

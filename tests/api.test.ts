@@ -120,6 +120,22 @@ describe("sendImageToAI", () => {
     });
   });
 
+  it("preserves the JPEG MIME type emitted by the mobile camera", async () => {
+    mockFetch.mockResolvedValueOnce(okText(multiFixture));
+
+    await sendImageToAI("data:image/jpeg;base64,JPEGDATA", "P", {
+      endpoint: "https://e.test/vision",
+      apiKey: "k",
+    });
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.messages[0].content[1]).toEqual({
+      type: "image_data",
+      mimeType: "image/jpeg",
+      data: "JPEGDATA",
+    });
+  });
+
   it("includes the verbatim prompt in the text content part", async () => {
     mockFetch.mockResolvedValueOnce(okText(multiFixture));
     const prompt = "verbatim-prompt-\u00a0-with-special-€-chars";

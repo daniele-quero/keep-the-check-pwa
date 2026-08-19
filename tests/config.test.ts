@@ -85,7 +85,7 @@ describe("config proxy constants", () => {
   it("exports the Netlify Functions endpoints and timeout", () => {
     expect(PROVIDERS_ENDPOINT).toBe("/.netlify/functions/ai-providers");
     expect(PROXY_ENDPOINT).toBe("/.netlify/functions/ai-proxy");
-    expect(AI_REQUEST_TIMEOUT_MS).toBeGreaterThan(0);
+    expect(AI_REQUEST_TIMEOUT_MS).toBe(28000);
   });
 });
 

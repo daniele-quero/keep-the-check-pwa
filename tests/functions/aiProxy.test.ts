@@ -341,4 +341,35 @@ describe("ai-proxy function", () => {
     expect(sentBody.imageBase64).toBeUndefined();
     expect(sentBody.prompt).toBeUndefined();
   });
+
+  it("returns 504 when the vision gateway exceeds the server-side timeout", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("AI_GATEWAY_VISION_URL", "https://ai-gateway-dq.netlify.app/api/vision");
+    vi.stubEnv("AI_GATEWAY_VISION_KEY", "gateway-secret");
+    mockFetch.mockImplementationOnce((_url: string, init: { signal: AbortSignal }) => {
+      return new Promise((_resolve, reject) => {
+        init.signal.addEventListener("abort", () => {
+          const err = new Error("aborted");
+          (err as Error & { name: string }).name = "AbortError";
+          reject(err);
+        });
+      });
+    });
+
+    const promise = handler(
+      proxyReq({
+        model: "auto:vision",
+        imageBase64: "data:image/png;base64,AAAA",
+        prompt: "Leggi i prezzi",
+        mimeType: "image/png",
+      })
+    );
+
+    await vi.advanceTimersByTimeAsync(25000);
+    const res = await promise;
+    expect(res.status).toBe(504);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("vision_gateway_timeout");
+    vi.useRealTimers();
+  });
 });

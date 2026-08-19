@@ -1,3 +1,22 @@
+const OUTPUT_MIME_TYPE = "image/jpeg";
+const OUTPUT_QUALITY = 0.82;
+const MAX_OUTPUT_DIMENSION = 1280;
+
+export function fitWithinMaxDimension(
+  width: number,
+  height: number,
+  maxDimension = MAX_OUTPUT_DIMENSION
+): { width: number; height: number } {
+  const longestSide = Math.max(width, height);
+  if (longestSide <= maxDimension) return { width, height };
+
+  const scale = maxDimension / longestSide;
+  return {
+    width: Math.round(width * scale),
+    height: Math.round(height * scale),
+  };
+}
+
 export class CameraService {
   private video: HTMLVideoElement;
   private stream: MediaStream | null = null;
@@ -32,13 +51,14 @@ export class CameraService {
     if (!this.isActive) return null;
 
     const canvas = document.createElement("canvas");
-    canvas.width = this.video.videoWidth;
-    canvas.height = this.video.videoHeight;
+    const output = fitWithinMaxDimension(this.video.videoWidth, this.video.videoHeight);
+    canvas.width = output.width;
+    canvas.height = output.height;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
-    ctx.drawImage(this.video, 0, 0);
-    return canvas.toDataURL("image/png").split(",")[1];
+    ctx.drawImage(this.video, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL(OUTPUT_MIME_TYPE, OUTPUT_QUALITY).split(",")[1];
   }
 
   captureCropped(cropRatio: number): string | null {
@@ -76,13 +96,24 @@ export class CameraService {
     const finalW = Math.round(srcW);
     const finalH = Math.round(srcH - cropAmount);
 
+    const output = fitWithinMaxDimension(finalW, finalH);
     const canvas = document.createElement("canvas");
-    canvas.width = finalW;
-    canvas.height = finalH;
+    canvas.width = output.width;
+    canvas.height = output.height;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
-    ctx.drawImage(this.video, finalX, finalY, finalW, finalH, 0, 0, finalW, finalH);
-    return canvas.toDataURL("image/png").split(",")[1];
+    ctx.drawImage(
+      this.video,
+      finalX,
+      finalY,
+      finalW,
+      finalH,
+      0,
+      0,
+      output.width,
+      output.height
+    );
+    return canvas.toDataURL(OUTPUT_MIME_TYPE, OUTPUT_QUALITY).split(",")[1];
   }
 }

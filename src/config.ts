@@ -27,7 +27,8 @@ export interface ProviderConfig {
 // Client-side endpoints for the server-side AI proxy (Netlify Functions).
 export const PROVIDERS_ENDPOINT = "/.netlify/functions/ai-providers";
 export const PROXY_ENDPOINT = "/.netlify/functions/ai-proxy";
-export const AI_REQUEST_TIMEOUT_MS = 30000;
+// Leaves time for ai-proxy to return its structured 25s gateway timeout.
+export const AI_REQUEST_TIMEOUT_MS = 28000;
 
 export interface CurrencyEntry {
   code: CurrencyCode;

@@ -17,7 +17,9 @@ import {
 
 declare const process: { env: Record<string, string | undefined> };
 
-const PROVIDER_TIMEOUT_MS = 30000;
+const REQUEST_TIMEOUT_MS = 25000;
+const PROVIDER_TIMEOUT_MS = 25000;
+const GATEWAY_TIMEOUT_MS = REQUEST_TIMEOUT_MS;
 const DATA_URL_PREFIX_RE = /^data:image\/[a-zA-Z0-9.+-]+;base64,/;
 
 function getVisionGatewayConfig(): { url: string | null; key: string | null; message: string | null } {
@@ -204,20 +206,45 @@ async function forwardToVisionGateway(payload: Record<string, unknown>): Promise
     });
   }
 
-  const res = await fetch(gateway.url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${gateway.key}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
 
-  const text = await res.text();
-  return new Response(text, {
-    status: res.ok ? 200 : res.status,
-    headers: { "Content-Type": "application/json" },
-  });
+  try {
+    const res = await fetch(gateway.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${gateway.key}`,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    const text = await res.text();
+    return new Response(text, {
+      status: res.ok ? 200 : res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      console.error("ai-proxy vision gateway timeout", {
+        timeoutMs: GATEWAY_TIMEOUT_MS,
+      });
+      return json(504, {
+        error: "vision_gateway_timeout",
+        message: `vision gateway timed out after ${GATEWAY_TIMEOUT_MS}ms`,
+      });
+    }
+    console.error("ai-proxy vision gateway request failed", {
+      message: err instanceof Error ? err.message : "unknown error",
+    });
+    return json(502, {
+      error: "vision_gateway_error",
+      message: err instanceof Error ? err.message : "unknown vision gateway error",
+    });
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
 }
 
 export default async function handler(req: Request): Promise<Response> {
@@ -264,8 +291,12 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const attempts: ProxyAttempt[] = [];
+  const deadline = Date.now() + REQUEST_TIMEOUT_MS;
 
   for (const entry of order) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+
     const key = process.env[entry.envKey] as string;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -275,7 +306,10 @@ export default async function handler(req: Request): Promise<Response> {
     const body = buildUpstreamBody(payload, entry);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
+    const timeout = setTimeout(
+      () => controller.abort(),
+      Math.min(PROVIDER_TIMEOUT_MS, remainingMs)
+    );
     try {
       const res = await fetch(entry.endpoint, {
         method: "POST",
@@ -283,8 +317,6 @@ export default async function handler(req: Request): Promise<Response> {
         body: JSON.stringify(body),
         signal: controller.signal,
       });
-      clearTimeout(timeout);
-
       if (res.ok) {
         const text = await res.text();
         return new Response(text, {
@@ -298,9 +330,10 @@ export default async function handler(req: Request): Promise<Response> {
       // Other 4xx: still advance to the next provider.
       continue;
     } catch {
-      clearTimeout(timeout);
       attempts.push({ providerId: entry.id, status: null });
       continue;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

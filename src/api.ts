@@ -18,8 +18,8 @@ export interface SendImageToAIOptions {
   aiProviders?: ProviderConfig[];
 }
 
-const DEFAULT_AI_TIMEOUT_MS = 30000;
-const DATA_URL_PREFIX_RE = /^data:image\/[a-zA-Z0-9.+-]+;base64,/;
+const DEFAULT_AI_TIMEOUT_MS = 28000;
+const DATA_URL_RE = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/;
 const ROUND_ROBIN_STORAGE_KEY = "aiProviderFallback.nextStartIndex";
 const DEFAULT_FAILURE_THRESHOLD = 3;
 const DEFAULT_COOLDOWN_MS = 120000;
@@ -48,8 +48,10 @@ interface ProviderRuntimeState {
 
 const providerRuntime = new Map<string, ProviderRuntimeState>();
 
-function normalizeBase64(imageBase64: string): string {
-  return imageBase64.replace(DATA_URL_PREFIX_RE, "");
+function normalizeImage(imageBase64: string): { base64: string; mimeType: string } {
+  const match = imageBase64.match(DATA_URL_RE);
+  if (!match) return { base64: imageBase64, mimeType: "image/jpeg" };
+  return { base64: match[2], mimeType: match[1] };
 }
 
 function resolveEndpointTemplate(endpointTemplate: string, model: string): string {
@@ -202,13 +204,18 @@ function buildHeaders(
   return headers;
 }
 
-function buildBody(provider: ResolvedProvider, prompt: string, rawBase64: string): unknown {
+function buildBody(
+  provider: ResolvedProvider,
+  prompt: string,
+  rawBase64: string,
+  mimeType: string
+): unknown {
   const normalizedModel = provider.model || MODEL_VISION;
   const isUnifiedVisionRequest =
     normalizedModel === MODEL_VISION || provider.endpoint.toLowerCase().includes("/vision");
 
   if (provider.kind === "replicate") {
-    const imageUrl = `data:image/jpeg;base64,${rawBase64}`;
+    const imageUrl = `data:${mimeType};base64,${rawBase64}`;
     const body: Record<string, unknown> = {
       input: {
         prompt,
@@ -230,7 +237,7 @@ function buildBody(provider: ResolvedProvider, prompt: string, rawBase64: string
           role: "user",
           content: [
             { type: "text", text: prompt },
-            { type: "image_data", mimeType: "image/png", data: rawBase64 },
+            { type: "image_data", mimeType, data: rawBase64 },
           ],
         },
       ],
@@ -238,7 +245,7 @@ function buildBody(provider: ResolvedProvider, prompt: string, rawBase64: string
     return body;
   }
 
-  const imageUrl = `data:image/png;base64,${rawBase64}`;
+  const imageUrl = `data:${mimeType};base64,${rawBase64}`;
   const body: Record<string, unknown> = {
     messages: [
       {
@@ -362,7 +369,7 @@ export async function sendImageToAI(
   prompt: string,
   opts: SendImageToAIOptions
 ): Promise<AiExtractionResult> {
-  const rawBase64 = normalizeBase64(imageBase64);
+  const image = normalizeImage(imageBase64);
   const providers = resolveProviders(opts);
 
   if (providers.length === 0) {
@@ -396,7 +403,7 @@ export async function sendImageToAI(
     }
 
     const headers = buildHeaders(provider, opts.extraHeaders);
-    const body = buildBody(provider, prompt, rawBase64);
+    const body = buildBody(provider, prompt, image.base64, image.mimeType);
 
     try {
       const res = await postJson(

@@ -162,7 +162,7 @@ export async function initApp(): Promise<void> {
       const base64 = camera.captureCropped(cropVal);
       if (!base64) throw new Error("Camera capture failed");
 
-      setCameraPreviewState(true, `data:image/png;base64,${base64}`);
+      setCameraPreviewState(true, `data:image/jpeg;base64,${base64}`);
       addModalController.reset();
       editingItemId = null;
       const result = await addModalController.analyzeImage(base64);
