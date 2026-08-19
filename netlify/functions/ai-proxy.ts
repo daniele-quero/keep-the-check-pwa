@@ -17,6 +17,7 @@ import {
 import {
   AiExtractionError,
   parseAiExtractionJson,
+  previewUnparseableText,
 } from "../../src/aiPrompt";
 
 declare const process: { env: Record<string, string | undefined> };
@@ -324,6 +325,9 @@ async function forwardToVisionGateway(
           responseBytes: text.length,
           responseShape,
           errorCode: parseError.code,
+          // Truncated prefix/suffix only (never the full extracted content),
+          // just enough to diagnose stray prose/markdown/truncation issues.
+          preview: previewUnparseableText(text),
         });
         return new Response(
           JSON.stringify({

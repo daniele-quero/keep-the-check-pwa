@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   IMAGE_EXTRACTION_PROMPT,
   parseAiExtractionJson,
+  previewUnparseableText,
   toPriceItems,
   AiExtractionError,
   type AiExtractionResult,
@@ -119,6 +120,29 @@ describe("parseAiExtractionJson", () => {
     expect(result.products[0].name).toBe("Latte Intero 1L");
   });
 
+  it("recovers JSON wrapped in a fence with surrounding prose", () => {
+    const withProse =
+      "Sure, here is the extraction result:\n```json\n" +
+      sampleStr +
+      "\n```\nLet me know if you need anything else.";
+    const result = parseAiExtractionJson(withProse);
+    expect(result.products[0].name).toBe("Latte Intero 1L");
+  });
+
+  it("recovers a bare JSON object surrounded by prose without fences", () => {
+    const withProse = "Here you go: " + sampleStr + " Hope that helps!";
+    const result = parseAiExtractionJson(withProse);
+    expect(result.version).toBe("1.0");
+  });
+
+  it("recovers the AI gateway envelope when its text field has prose around the JSON", () => {
+    const envelope = JSON.stringify({
+      text: "Result:\n```json\n" + sampleStr + "\n```",
+    });
+    const result = parseAiExtractionJson(envelope);
+    expect(result.products[0].name).toBe("Latte Intero 1L");
+  });
+
   it("throws AiExtractionError(invalid_json) on garbage", () => {
     expect.assertions(2);
     try {
@@ -157,6 +181,25 @@ describe("parseAiExtractionJson", () => {
       expect(e).toBeInstanceOf(AiExtractionError);
       expect((e as AiExtractionError).code).toBe("schema_mismatch");
     }
+  });
+});
+
+describe("previewUnparseableText", () => {
+  it("returns short text unchanged", () => {
+    expect(previewUnparseableText("hello world")).toBe("hello world");
+  });
+
+  it("unwraps the gateway { text } envelope before previewing", () => {
+    const envelope = JSON.stringify({ text: "not really json" });
+    expect(previewUnparseableText(envelope)).toBe("not really json");
+  });
+
+  it("truncates long content to a bounded prefix/suffix and never throws", () => {
+    const long = "A".repeat(1000);
+    const preview = previewUnparseableText(long, 20);
+    expect(preview.length).toBeLessThan(long.length);
+    expect(preview).toContain("chars omitted");
+    expect(() => previewUnparseableText("{{{ not json at all")).not.toThrow();
   });
 });
 

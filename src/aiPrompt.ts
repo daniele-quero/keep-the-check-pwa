@@ -109,11 +109,81 @@ export class AiExtractionError extends Error {
   }
 }
 
-const FENCE_RE = /^\s*```(?:json|JSON)?\s*\n([\s\S]*?)\n?```\s*$/;
+// Matches a fenced code block anywhere in the text (not anchored to the
+// whole string), so preamble/trailing prose around the fence doesn't block
+// extraction. e.g. "Sure, here you go:\n```json\n{...}\n```\nLet me know!"
+const FENCE_RE = /```(?:json|JSON)?\s*\n?([\s\S]*?)```/;
 
-function stripFences(text: string): string {
+function extractFencedJson(text: string): string | null {
   const m = text.match(FENCE_RE);
-  return m ? m[1] : text;
+  const inner = m?.[1]?.trim();
+  return inner && inner.length > 0 ? inner : null;
+}
+
+// Finds the first top-level JSON object in the text by counting brace depth,
+// so a model's stray preamble/trailing commentary around a valid JSON object
+// doesn't prevent extraction (e.g. "Here is the result: {...} Let me know.").
+function extractBalancedJson(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escapeNext = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+// Best-effort JSON.parse that tolerates markdown fences and stray prose
+// wrapped around the actual JSON object, which some vision models emit
+// despite being instructed to return raw JSON only.
+function parseJsonLenient(text: string): unknown {
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // fall through to fence/balanced-brace recovery below
+  }
+
+  const fenced = extractFencedJson(trimmed);
+  if (fenced) {
+    try {
+      return JSON.parse(fenced);
+    } catch {
+      // fall through
+    }
+  }
+
+  const balanced = extractBalancedJson(trimmed);
+  if (balanced) {
+    try {
+      return JSON.parse(balanced);
+    } catch {
+      // fall through
+    }
+  }
+
+  throw new AiExtractionError("invalid_json", "input is not valid JSON");
 }
 
 function unwrapEnvelope(value: unknown): string | unknown {
@@ -147,33 +217,17 @@ export function parseAiExtractionJson(raw: string): AiExtractionResult {
     throw new AiExtractionError("empty", "input is empty");
   }
 
-  const trimmed = raw.trim();
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    const stripped = stripFences(trimmed).trim();
-    try {
-      parsed = JSON.parse(stripped);
-    } catch {
-      throw new AiExtractionError("invalid_json", "input is not valid JSON");
-    }
-  }
+  let parsed: unknown = parseJsonLenient(raw);
 
   // Unwrap envelope shapes up to two times (envelope -> string -> object).
   for (let i = 0; i < 2; i++) {
     if (isExtractionShape(parsed)) break;
     const unwrapped = unwrapEnvelope(parsed);
     if (typeof unwrapped === "string") {
-      const inner = stripFences(unwrapped).trim();
-      if (inner.length === 0) {
+      if (unwrapped.trim().length === 0) {
         throw new AiExtractionError("empty", "envelope content is empty");
       }
-      try {
-        parsed = JSON.parse(inner);
-      } catch {
-        throw new AiExtractionError("invalid_json", "envelope content is not valid JSON");
-      }
+      parsed = parseJsonLenient(unwrapped);
     } else if (unwrapped !== parsed) {
       parsed = unwrapped;
     } else {
@@ -186,6 +240,26 @@ export function parseAiExtractionJson(raw: string): AiExtractionResult {
   }
 
   return parsed;
+}
+
+// Best-effort, safe-for-logs preview of what the gateway/model actually
+// returned when parsing fails. Only used for diagnostics: it never throws
+// and never returns more than a short prefix/suffix, so it can't leak an
+// entire extracted receipt (product names/prices) into Netlify logs.
+export function previewUnparseableText(raw: string, maxLen = 160): string {
+  try {
+    let text = raw;
+    const parsed = JSON.parse(raw);
+    const unwrapped = unwrapEnvelope(parsed);
+    if (typeof unwrapped === "string") text = unwrapped;
+    const trimmed = text.trim();
+    if (trimmed.length <= maxLen * 2) return trimmed;
+    return `${trimmed.slice(0, maxLen)}…[${trimmed.length - maxLen * 2} chars omitted]…${trimmed.slice(-maxLen)}`;
+  } catch {
+    const trimmed = raw.trim();
+    if (trimmed.length <= maxLen * 2) return trimmed;
+    return `${trimmed.slice(0, maxLen)}…[${trimmed.length - maxLen * 2} chars omitted]…${trimmed.slice(-maxLen)}`;
+  }
 }
 
 export interface FlattenedPriceItem {

@@ -137,7 +137,9 @@ The request body follows the vision gateway contract:
 
 `stream: false` is the correct choice for this use case because the app expects one final structured JSON document with product and price extraction, not a continuous chat stream. The server-side proxy then forwards the request to the configured gateway URL using the `AI_GATEWAY_VISION_KEY` secret and returns the server response as-is. The client accepts direct extraction JSON, OpenAI-style envelopes, and the gateway's `{ "text": "..." }` response envelope.
 
-For each vision request, `ai-proxy` writes structured Netlify logs containing the Netlify request ID, image MIME type and approximate decoded byte count, gateway status, duration, response byte count, and response shape. Successful gateway responses are also validated against the extraction contract before the proxy returns `200`; a non-parseable `2xx` body becomes a diagnostic `502` with an error code. It never logs the image, prompt, extracted text, or API key.
+For each vision request, `ai-proxy` writes structured Netlify logs containing the Netlify request ID, image MIME type and approximate decoded byte count, gateway status, duration, response byte count, and response shape. Successful gateway responses are also validated against the extraction contract before the proxy returns `200`; a non-parseable `2xx` body becomes a diagnostic `502` with an error code. When that validation fails, the proxy also logs a bounded prefix/suffix preview (never the full text) of the unparseable content to help diagnose stray prose, markdown fences, or truncation from the model. It never logs the image, prompt, full extracted text, or API key.
+
+`parseAiExtractionJson` tolerates common model quirks: JSON wrapped in a Markdown fence anywhere in the text (not just when the fence spans the whole response), and a bare JSON object surrounded by extra prose, by locating the first balanced `{...}` block. This is on top of the strict schema validation (`version` + `products[]` required).
 
 ### Netlify Functions
 
