@@ -122,6 +122,9 @@ function unwrapEnvelope(value: unknown): string | unknown {
     if (typeof v.output_text === "string") {
       return v.output_text;
     }
+    if (typeof v.text === "string") {
+      return v.text;
+    }
     if (Array.isArray(v.choices) && v.choices.length > 0) {
       const first = v.choices[0] as Record<string, unknown> | undefined;
       const message = first && (first.message as Record<string, unknown> | undefined);

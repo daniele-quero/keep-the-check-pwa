@@ -109,6 +109,16 @@ describe("parseAiExtractionJson", () => {
     expect(result.version).toBe("1.0");
   });
 
+  it("unwraps the AI gateway ChatResponse { text } envelope", () => {
+    const envelope = JSON.stringify({
+      provider: "gateway-provider",
+      model: "auto:vision",
+      text: sampleStr,
+    });
+    const result = parseAiExtractionJson(envelope);
+    expect(result.products[0].name).toBe("Latte Intero 1L");
+  });
+
   it("throws AiExtractionError(invalid_json) on garbage", () => {
     expect.assertions(2);
     try {

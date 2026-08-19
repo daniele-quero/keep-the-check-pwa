@@ -109,7 +109,7 @@ body.desktop-blocked {
   inset: 10px 12px 8px;
   width: calc(100% - 24px);
   height: calc(100% - 18px);
-  object-fit: cover;
+  object-fit: contain;
   border-radius: 14px;
   border: 2px solid rgba(122, 63, 42, 0.28);
   box-shadow: 0 8px 18px rgba(90, 41, 22, 0.16);

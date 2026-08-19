@@ -315,6 +315,40 @@ describe("ai-proxy function", () => {
     expect(sentBody.messages[0].content[1].data).toBe(base64);
   });
 
+  it("logs safe request and response metadata for a successful vision gateway call", async () => {
+    vi.stubEnv("AI_GATEWAY_VISION_URL", "https://ai-gateway-dq.netlify.app/api/vision");
+    vi.stubEnv("AI_GATEWAY_VISION_KEY", "gateway-secret");
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    mockFetch.mockResolvedValueOnce(
+      okResponse(JSON.stringify({ provider: "gateway", model: "auto:vision", text: EXTRACTION_JSON }))
+    );
+
+    await handler(
+      proxyReq(
+        {
+          model: "auto:vision",
+          imageBase64: "data:image/jpeg;base64,AAAA",
+          prompt: "Leggi i prezzi",
+          mimeType: "image/jpeg",
+        },
+        { "x-nf-request-id": "netlify-request-123" }
+      )
+    );
+
+    expect(info).toHaveBeenCalledWith("ai-proxy vision gateway request", {
+      requestId: "netlify-request-123",
+      mimeType: "image/jpeg",
+      imageBytes: 3,
+    });
+    expect(info).toHaveBeenCalledWith("ai-proxy vision gateway response", {
+      requestId: "netlify-request-123",
+      status: 200,
+      durationMs: expect.any(Number),
+      responseBytes: expect.any(Number),
+      responseShape: "chat_response",
+    });
+  });
+
   it("normalizes compact auto:vision payloads before forwarding them to the vision gateway", async () => {
     vi.stubEnv("AI_GATEWAY_VISION_URL", "https://ai-gateway-dq.netlify.app/api/vision");
     vi.stubEnv("AI_GATEWAY_VISION_KEY", "gateway-secret");

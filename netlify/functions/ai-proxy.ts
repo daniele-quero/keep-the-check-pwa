@@ -52,6 +52,11 @@ interface ProxyAttempt {
   status: number | null;
 }
 
+interface ImageMetadata {
+  mimeType: string | null;
+  bytes: number | null;
+}
+
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -197,14 +202,67 @@ function isCyclableStatus(status: number): boolean {
   return status === 429 || status === 401 || status === 403 || status >= 500;
 }
 
-async function forwardToVisionGateway(payload: Record<string, unknown>): Promise<Response> {
+function getImageMetadata(payload: Record<string, unknown>): ImageMetadata {
+  if (!Array.isArray(payload.messages)) {
+    return { mimeType: null, bytes: null };
+  }
+
+  for (const message of payload.messages) {
+    if (!message || typeof message !== "object") continue;
+    const content = (message as Record<string, unknown>).content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (!part || typeof part !== "object") continue;
+      const image = part as Record<string, unknown>;
+      if (image.type !== "image_data" || typeof image.data !== "string") continue;
+      return {
+        mimeType: typeof image.mimeType === "string" ? image.mimeType : null,
+        bytes: Math.floor((image.data.length * 3) / 4),
+      };
+    }
+  }
+
+  return { mimeType: null, bytes: null };
+}
+
+function getGatewayResponseShape(text: string): string {
+  try {
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    if (typeof parsed.text === "string") return "chat_response";
+    if (typeof parsed.output_text === "string") return "responses_envelope";
+    if (Array.isArray(parsed.choices)) return "openai_envelope";
+    if (typeof parsed.version === "string" && Array.isArray(parsed.products)) {
+      return "extraction_result";
+    }
+    return "json";
+  } catch {
+    return "non_json";
+  }
+}
+
+async function forwardToVisionGateway(
+  payload: Record<string, unknown>,
+  requestId: string
+): Promise<Response> {
   const gateway = getVisionGatewayConfig();
   if (!gateway.url || !gateway.key) {
+    console.error("ai-proxy vision gateway is not configured", {
+      requestId,
+      reason: gateway.message,
+    });
     return json(502, {
       error: "vision_gateway_not_configured",
       message: gateway.message,
     });
   }
+
+  const startedAt = Date.now();
+  const image = getImageMetadata(payload);
+  console.info("ai-proxy vision gateway request", {
+    requestId,
+    mimeType: image.mimeType,
+    imageBytes: image.bytes,
+  });
 
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
@@ -221,6 +279,15 @@ async function forwardToVisionGateway(payload: Record<string, unknown>): Promise
     });
 
     const text = await res.text();
+    const responseShape = getGatewayResponseShape(text);
+    const log = res.ok ? console.info : console.error;
+    log("ai-proxy vision gateway response", {
+      requestId,
+      status: res.status,
+      durationMs: Date.now() - startedAt,
+      responseBytes: text.length,
+      responseShape,
+    });
     return new Response(text, {
       status: res.ok ? 200 : res.status,
       headers: { "Content-Type": "application/json" },
@@ -228,7 +295,9 @@ async function forwardToVisionGateway(payload: Record<string, unknown>): Promise
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       console.error("ai-proxy vision gateway timeout", {
+        requestId,
         timeoutMs: GATEWAY_TIMEOUT_MS,
+        durationMs: Date.now() - startedAt,
       });
       return json(504, {
         error: "vision_gateway_timeout",
@@ -236,6 +305,8 @@ async function forwardToVisionGateway(payload: Record<string, unknown>): Promise
       });
     }
     console.error("ai-proxy vision gateway request failed", {
+      requestId,
+      durationMs: Date.now() - startedAt,
       message: err instanceof Error ? err.message : "unknown error",
     });
     return json(502, {
@@ -248,6 +319,9 @@ async function forwardToVisionGateway(payload: Record<string, unknown>): Promise
 }
 
 export default async function handler(req: Request): Promise<Response> {
+  const requestId =
+    req.headers.get("x-nf-request-id") ?? `ai-proxy-${Date.now().toString(36)}`;
+
   if (req.method !== "POST") {
     return json(405, { error: "method_not_allowed" });
   }
@@ -275,7 +349,10 @@ export default async function handler(req: Request): Promise<Response> {
     typeof payload.model === "string" &&
     payload.model.trim().toLowerCase() === "auto:vision";
   if (isUnifiedVisionRequest) {
-    return forwardToVisionGateway(normalizeUnifiedVisionPayload(payload));
+    return forwardToVisionGateway(
+      normalizeUnifiedVisionPayload(payload),
+      requestId
+    );
   }
 
   const selectedId =
