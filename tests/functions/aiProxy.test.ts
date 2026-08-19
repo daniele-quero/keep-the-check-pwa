@@ -400,6 +400,7 @@ describe("ai-proxy function", () => {
     const sentBody = JSON.parse(init.body);
     expect(sentBody.model).toBe("auto:vision");
     expect(sentBody.stream).toBe(false);
+    expect(sentBody.maxOutputTokens).toBe(256);
     expect(sentBody.messages[0].content[0].text).toBe("Leggi i prezzi");
     expect(sentBody.messages[0].content[1].type).toBe("image_data");
     expect(sentBody.messages[0].content[1].data).toBe("AAAA");

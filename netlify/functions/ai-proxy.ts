@@ -16,8 +16,8 @@ import {
 } from "../../src/providerCatalog";
 import {
   AiExtractionError,
+  getUnparseableTextDiagnostics,
   parseAiExtractionJson,
-  previewUnparseableText,
 } from "../../src/aiPrompt";
 
 declare const process: { env: Record<string, string | undefined> };
@@ -25,6 +25,7 @@ declare const process: { env: Record<string, string | undefined> };
 const REQUEST_TIMEOUT_MS = 25000;
 const PROVIDER_TIMEOUT_MS = 25000;
 const GATEWAY_TIMEOUT_MS = REQUEST_TIMEOUT_MS;
+const VISION_MAX_OUTPUT_TOKENS = 256;
 const DATA_URL_PREFIX_RE = /^data:image\/[a-zA-Z0-9.+-]+;base64,/;
 
 function getVisionGatewayConfig(): { url: string | null; key: string | null; message: string | null } {
@@ -139,6 +140,7 @@ function normalizeUnifiedVisionPayload(
   const normalizedPayload: Record<string, unknown> = {
     model: normalizedModel,
     stream: false,
+    maxOutputTokens: VISION_MAX_OUTPUT_TOKENS,
     messages,
   };
 
@@ -325,9 +327,7 @@ async function forwardToVisionGateway(
           responseBytes: text.length,
           responseShape,
           errorCode: parseError.code,
-          // Truncated prefix/suffix only (never the full extracted content),
-          // just enough to diagnose stray prose/markdown/truncation issues.
-          preview: previewUnparseableText(text),
+          diagnostics: getUnparseableTextDiagnostics(text),
         });
         return new Response(
           JSON.stringify({

@@ -1,42 +1,18 @@
-export const IMAGE_EXTRACTION_PROMPT = `You are a precision visual-text extractor for retail images (price tags, shelf labels, packaging). Analyze the provided image and return ONLY valid JSON that exactly matches the schema below. Do NOT add narrative, explanation, or logs. Use visual layout + OCR to identify product name(s) and all price-like values. Normalize numbers and currencies. Include confidence scores (0.00–1.00). Provide bounding boxes in pixel coordinates relative to the original image. If uncertain, include an explanation in \`notes\` and set \`uncertain: true\`. Follow these rules precisely:
-- Detect every product-like label and each price-like text fragment.
-- For product name: prefer large, centered, or bold text; if multiple candidates provide \`name_candidates\`.
-- For prices: recognize currency symbols and names (€, EUR, $, USD, GBP, £, etc.) and local numeric formats (1.234,56 or 1,234.56). Normalize to a float using dot (\`normalized\`: 1.99) and supply \`currency\` as ISO-4217 code.
-- Types: classify prices as \`unit_price\`, \`total_price\`, \`discount_price\`, \`old_price\`, \`price_per_unit\` when inferable.
-- Bounding box format: \`{ "x": int, "y": int, "width": int, "height": int }\` in pixels.
-- Confidence fields: two-decimal floats between 0.00 and 1.00.
-- Output must be a single JSON object exactly matching the example schema; keys should not be renamed.
-
-Example required JSON schema (strict):
+export const IMAGE_EXTRACTION_PROMPT = `Read this retail image and return only valid JSON with exactly these keys:
 {
-  "version":"1.0",
-  "products":[
-    {
-      "id":"p1",
-      "name":"string|null",
-      "name_confidence":0.00,
-      "name_raw":"string",
-      "name_candidates":[ { "text":"string", "confidence":0.00 } ],
-      "prices":[
-        {
-          "raw_text":"string",
-          "normalized":0.00,
-          "currency":"EUR|USD|GBP|…",
-          "confidence":0.00,
-          "type":"unit_price|total_price|discount_price|old_price|price_per_unit|other",
-          "bounding_box": { "x":0, "y":0, "width":0, "height":0 },
-          "notes":"string"
-        }
-      ],
-      "notes":"string"
-    }
-  ],
-  "image_text":"full OCR text as single string",
-  "metadata": { "processing_ms": 0, "model":"string" },
-  "warnings":[ "string" ],
+  "product_name": "string or null",
+  "price": 0.00,
+  "currency": "EUR or USD or GBP or another ISO-4217 code, or null",
+  "price_type": "unit_price|discount_price|price_per_unit|other",
+  "confidence": 0.00,
   "uncertain": false
 }
-(Strict rules: \`products\` may be empty array if none detected; return numeric \`normalized\` as float; \`currency\` must be ISO code or \`null\` if unknown.)`;
+
+Rules:
+- Choose one best product and its current selling price; prefer a discounted price over an old/crossed-out price.
+- Parse 1.234,56 and 1,234.56 as JSON numbers with a dot.
+- Use null product/currency and price null when no usable price is visible; then set \`price_type: "other"\`, \`confidence: 0\`, \`uncertain: true\`.
+- No Markdown, prose, OCR, bounding boxes, IDs, notes, or extra keys.`;
 
 export interface AiBoundingBox {
   x: number;
@@ -54,12 +30,12 @@ export type AiPriceType =
   | "other";
 
 export interface AiPrice {
-  raw_text: string;
+  raw_text?: string;
   normalized: number;
   currency: string | null;
   confidence: number;
   type: AiPriceType;
-  bounding_box: AiBoundingBox;
+  bounding_box?: AiBoundingBox;
   notes?: string;
 }
 
@@ -69,11 +45,11 @@ export interface AiNameCandidate {
 }
 
 export interface AiProduct {
-  id: string;
+  id?: string;
   name: string | null;
-  name_confidence: number;
-  name_raw: string;
-  name_candidates: AiNameCandidate[];
+  name_confidence?: number;
+  name_raw?: string;
+  name_candidates?: AiNameCandidate[];
   prices: AiPrice[];
   notes?: string;
 }
@@ -212,6 +188,71 @@ function isExtractionShape(value: unknown): value is AiExtractionResult {
   return typeof v.version === "string" && Array.isArray(v.products);
 }
 
+const COMPACT_PRICE_TYPES = new Set<AiPriceType>([
+  "unit_price",
+  "discount_price",
+  "price_per_unit",
+  "other",
+]);
+
+interface CompactExtractionResult {
+  product_name: string | null;
+  price: number | null;
+  currency: string | null;
+  price_type: AiPriceType;
+  confidence: number;
+  uncertain: boolean;
+}
+
+function isCompactExtractionShape(value: unknown): value is CompactExtractionResult {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    (typeof v.product_name === "string" || v.product_name === null) &&
+    (typeof v.price === "number" || v.price === null) &&
+    (typeof v.currency === "string" || v.currency === null) &&
+    typeof v.price_type === "string" &&
+    COMPACT_PRICE_TYPES.has(v.price_type as AiPriceType) &&
+    typeof v.confidence === "number" &&
+    Number.isFinite(v.confidence) &&
+    typeof v.uncertain === "boolean"
+  );
+}
+
+function normalizeExtraction(value: AiExtractionResult | CompactExtractionResult): AiExtractionResult {
+  if (isExtractionShape(value)) return value;
+  if (value.price === null || !Number.isFinite(value.price)) {
+    return {
+      version: "1.0",
+      products: [],
+      image_text: "",
+      metadata: { processing_ms: 0, model: "auto:vision" },
+      warnings: [],
+      uncertain: true,
+    };
+  }
+  return {
+    version: "1.0",
+    products: [
+      {
+        name: value.product_name,
+        prices: [
+          {
+            normalized: value.price,
+            currency: value.currency,
+            confidence: value.confidence,
+            type: value.price_type,
+          },
+        ],
+      },
+    ],
+    image_text: "",
+    metadata: { processing_ms: 0, model: "auto:vision" },
+    warnings: [],
+    uncertain: value.uncertain,
+  };
+}
+
 export function parseAiExtractionJson(raw: string): AiExtractionResult {
   if (typeof raw !== "string" || raw.trim().length === 0) {
     throw new AiExtractionError("empty", "input is empty");
@@ -235,31 +276,30 @@ export function parseAiExtractionJson(raw: string): AiExtractionResult {
     }
   }
 
-  if (!isExtractionShape(parsed)) {
+  if (!isExtractionShape(parsed) && !isCompactExtractionShape(parsed)) {
     throw new AiExtractionError("schema_mismatch", "missing required keys: version, products[]");
   }
 
-  return parsed;
+  return normalizeExtraction(parsed);
 }
 
-// Best-effort, safe-for-logs preview of what the gateway/model actually
-// returned when parsing fails. Only used for diagnostics: it never throws
-// and never returns more than a short prefix/suffix, so it can't leak an
-// entire extracted receipt (product names/prices) into Netlify logs.
-export function previewUnparseableText(raw: string, maxLen = 160): string {
-  try {
-    let text = raw;
-    const parsed = JSON.parse(raw);
-    const unwrapped = unwrapEnvelope(parsed);
-    if (typeof unwrapped === "string") text = unwrapped;
-    const trimmed = text.trim();
-    if (trimmed.length <= maxLen * 2) return trimmed;
-    return `${trimmed.slice(0, maxLen)}…[${trimmed.length - maxLen * 2} chars omitted]…${trimmed.slice(-maxLen)}`;
-  } catch {
-    const trimmed = raw.trim();
-    if (trimmed.length <= maxLen * 2) return trimmed;
-    return `${trimmed.slice(0, maxLen)}…[${trimmed.length - maxLen * 2} chars omitted]…${trimmed.slice(-maxLen)}`;
-  }
+// Safe-for-logs diagnostics for a parse failure. It intentionally reports
+// structure only and never includes product names, prices, OCR, or prompts.
+export function getUnparseableTextDiagnostics(raw: string): string {
+  const trimmed = raw.trim();
+  const startsWithFence = /^```(?:json)?\s*/i.test(trimmed);
+  const endsWithFence = /```\s*$/i.test(trimmed);
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  const hasCompleteObject = firstBrace >= 0 && lastBrace > firstBrace;
+  const likelyTruncated = startsWithFence && !endsWithFence;
+  return [
+    `length=${trimmed.length}`,
+    `startsWithFence=${startsWithFence}`,
+    `endsWithFence=${endsWithFence}`,
+    `hasCompleteObject=${hasCompleteObject}`,
+    `likelyTruncated=${likelyTruncated}`,
+  ].join("; ");
 }
 
 export interface FlattenedPriceItem {

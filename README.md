@@ -137,9 +137,9 @@ The request body follows the vision gateway contract:
 
 `stream: false` is the correct choice for this use case because the app expects one final structured JSON document with product and price extraction, not a continuous chat stream. The server-side proxy then forwards the request to the configured gateway URL using the `AI_GATEWAY_VISION_KEY` secret and returns the server response as-is. The client accepts direct extraction JSON, OpenAI-style envelopes, and the gateway's `{ "text": "..." }` response envelope.
 
-For each vision request, `ai-proxy` writes structured Netlify logs containing the Netlify request ID, image MIME type and approximate decoded byte count, gateway status, duration, response byte count, and response shape. Successful gateway responses are also validated against the extraction contract before the proxy returns `200`; a non-parseable `2xx` body becomes a diagnostic `502` with an error code. When that validation fails, the proxy also logs a bounded prefix/suffix preview (never the full text) of the unparseable content to help diagnose stray prose, markdown fences, or truncation from the model. It never logs the image, prompt, full extracted text, or API key.
+For each vision request, `ai-proxy` writes structured Netlify logs containing the Netlify request ID, image MIME type and approximate decoded byte count, gateway status, duration, response byte count, and response shape. Successful gateway responses are also validated against the extraction contract before the proxy returns `200`; a non-parseable `2xx` body becomes a diagnostic `502` with an error code. When that validation fails, the proxy logs structure-only diagnostics (length, Markdown fence termination, complete-object detection, and likely truncation) to diagnose model output without logging product names, prices, OCR, prompts, images, or API keys.
 
-`parseAiExtractionJson` tolerates common model quirks: JSON wrapped in a Markdown fence anywhere in the text (not just when the fence spans the whole response), and a bare JSON object surrounded by extra prose, by locating the first balanced `{...}` block. This is on top of the strict schema validation (`version` + `products[]` required).
+The vision prompt requests only one compact item object (`product_name`, `price`, `currency`, `price_type`, `confidence`, `uncertain`) and the proxy explicitly sends `maxOutputTokens: 256`. `parseAiExtractionJson` normalizes this compact contract to the internal `products[]/prices[]` shape and remains compatible with legacy extraction envelopes. It also tolerates common model quirks such as Markdown fences or surrounding prose.
 
 ### Netlify Functions
 
@@ -288,7 +288,7 @@ Wraps `MediaDevices` to access the rear camera and capture frames.
 
 The verbatim extraction prompt and helpers that turn the AI response into `PriceItem` candidates.
 
-- `IMAGE_EXTRACTION_PROMPT: string` — embedded verbatim; the integration test asserts character-for-character equality.
+- `IMAGE_EXTRACTION_PROMPT: string` — compact single-item vision contract; tests assert the required keys and instructions.
 - Schema types:
   - `AiPriceType` — union of `"unit_price" | "total_price" | "discount_price" | "old_price" | "price_per_unit" | "other"`.
   - `AiBoundingBox` — `{ x, y, width, height }` in pixels.
@@ -296,7 +296,7 @@ The verbatim extraction prompt and helpers that turn the AI response into `Price
   - `AiPrice` — single price entry with `raw_text`, `normalized`, `currency`, `confidence`, `type: AiPriceType`, `bounding_box`, optional `notes`.
   - `AiProduct` — product entry with `id`, `name`, `name_confidence`, `name_raw`, `name_candidates`, `prices`, optional `notes`.
   - `AiExtractionMetadata` — `{ processing_ms, model }`.
-  - `AiExtractionResult` — top-level extraction envelope: `version`, `products`, `image_text`, `metadata`, `warnings`, `uncertain`.
+  - `AiExtractionResult` — internal normalized extraction envelope: `version`, `products`, `image_text`, `metadata`, `warnings`, `uncertain`. Compact gateway responses are normalized into this shape.
   - `AiExtractionErrorCode` — `"invalid_json" | "schema_mismatch" | "empty" | "http_error" | "timeout" | "network"`.
 - `parseAiExtractionJson(raw: string): AiExtractionResult` — strips Markdown fences, parses, validates required keys. Throws `AiExtractionError("invalid_json")`, `AiExtractionError("schema_mismatch")`, or `AiExtractionError("empty")`.
 - `toPriceItems(result, defaultCurrency)` — picks the highest-confidence name and emits one item per `unit_price` / `total_price` entry, skipping `old_price` unless it is the only available price.

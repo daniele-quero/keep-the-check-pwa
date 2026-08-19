@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   IMAGE_EXTRACTION_PROMPT,
+  getUnparseableTextDiagnostics,
   parseAiExtractionJson,
-  previewUnparseableText,
   toPriceItems,
   AiExtractionError,
   type AiExtractionResult,
@@ -18,52 +18,21 @@ function loadFixture(name: string): AiExtractionResult {
 }
 
 describe("IMAGE_EXTRACTION_PROMPT", () => {
-  it("matches the verbatim canonical string", () => {
-    expect(IMAGE_EXTRACTION_PROMPT).toBe(`You are a precision visual-text extractor for retail images (price tags, shelf labels, packaging). Analyze the provided image and return ONLY valid JSON that exactly matches the schema below. Do NOT add narrative, explanation, or logs. Use visual layout + OCR to identify product name(s) and all price-like values. Normalize numbers and currencies. Include confidence scores (0.00–1.00). Provide bounding boxes in pixel coordinates relative to the original image. If uncertain, include an explanation in \`notes\` and set \`uncertain: true\`. Follow these rules precisely:
-- Detect every product-like label and each price-like text fragment.
-- For product name: prefer large, centered, or bold text; if multiple candidates provide \`name_candidates\`.
-- For prices: recognize currency symbols and names (€, EUR, $, USD, GBP, £, etc.) and local numeric formats (1.234,56 or 1,234.56). Normalize to a float using dot (\`normalized\`: 1.99) and supply \`currency\` as ISO-4217 code.
-- Types: classify prices as \`unit_price\`, \`total_price\`, \`discount_price\`, \`old_price\`, \`price_per_unit\` when inferable.
-- Bounding box format: \`{ "x": int, "y": int, "width": int, "height": int }\` in pixels.
-- Confidence fields: two-decimal floats between 0.00 and 1.00.
-- Output must be a single JSON object exactly matching the example schema; keys should not be renamed.
+ it("requests the compact item extraction contract", () => {
+   expect(IMAGE_EXTRACTION_PROMPT).toContain('"product_name"');
+   expect(IMAGE_EXTRACTION_PROMPT).toContain('"price"');
+   expect(IMAGE_EXTRACTION_PROMPT).toContain('"currency"');
+   expect(IMAGE_EXTRACTION_PROMPT).toContain('"price_type"');
+   expect(IMAGE_EXTRACTION_PROMPT).not.toContain("image_text");
+   expect(IMAGE_EXTRACTION_PROMPT).not.toContain("bounding_box");
+   expect(IMAGE_EXTRACTION_PROMPT).not.toContain("name_candidates");
+ });
 
-Example required JSON schema (strict):
-{
-  "version":"1.0",
-  "products":[
-    {
-      "id":"p1",
-      "name":"string|null",
-      "name_confidence":0.00,
-      "name_raw":"string",
-      "name_candidates":[ { "text":"string", "confidence":0.00 } ],
-      "prices":[
-        {
-          "raw_text":"string",
-          "normalized":0.00,
-          "currency":"EUR|USD|GBP|…",
-          "confidence":0.00,
-          "type":"unit_price|total_price|discount_price|old_price|price_per_unit|other",
-          "bounding_box": { "x":0, "y":0, "width":0, "height":0 },
-          "notes":"string"
-        }
-      ],
-      "notes":"string"
-    }
-  ],
-  "image_text":"full OCR text as single string",
-  "metadata": { "processing_ms": 0, "model":"string" },
-  "warnings":[ "string" ],
-  "uncertain": false
-}
-(Strict rules: \`products\` may be empty array if none detected; return numeric \`normalized\` as float; \`currency\` must be ISO code or \`null\` if unknown.)`);
-  });
-
-  it("starts with 'You are' and ends with 'if unknown.)'", () => {
-    expect(IMAGE_EXTRACTION_PROMPT.startsWith("You are")).toBe(true);
-    expect(IMAGE_EXTRACTION_PROMPT.endsWith("if unknown.)")).toBe(true);
-  });
+ it("requires JSON only and prioritizes the current price", () => {
+   expect(IMAGE_EXTRACTION_PROMPT).toContain("return only valid JSON");
+   expect(IMAGE_EXTRACTION_PROMPT).toContain("current selling price");
+   expect(IMAGE_EXTRACTION_PROMPT).toContain("prefer a discounted price");
+ });
 });
 
 describe("parseAiExtractionJson", () => {
@@ -118,6 +87,64 @@ describe("parseAiExtractionJson", () => {
     });
     const result = parseAiExtractionJson(envelope);
     expect(result.products[0].name).toBe("Latte Intero 1L");
+  });
+
+  it("normalizes the compact single-item response used by the vision prompt", () => {
+    const compact = JSON.stringify({
+      product_name: "Latte Intero 1L",
+      price: 1.99,
+      currency: "EUR",
+      price_type: "unit_price",
+      confidence: 0.97,
+      uncertain: false,
+    });
+    const result = parseAiExtractionJson(compact);
+    expect(result).toMatchObject({
+      version: "1.0",
+      uncertain: false,
+      products: [
+        {
+          name: "Latte Intero 1L",
+          prices: [
+            {
+              normalized: 1.99,
+              currency: "EUR",
+              type: "unit_price",
+              confidence: 0.97,
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("normalizes a compact gateway text envelope", () => {
+    const envelope = JSON.stringify({
+      text: JSON.stringify({
+        product_name: "Pane",
+        price: 2.5,
+        currency: "EUR",
+        price_type: "unit_price",
+        confidence: 0.8,
+        uncertain: false,
+      }),
+    });
+    const result = parseAiExtractionJson(envelope);
+    expect(result.products[0]?.prices[0]?.normalized).toBe(2.5);
+  });
+
+  it("returns no products when the compact response has no usable price", () => {
+    const compact = JSON.stringify({
+      product_name: null,
+      price: null,
+      currency: null,
+      price_type: "other",
+      confidence: 0,
+      uncertain: true,
+    });
+    const result = parseAiExtractionJson(compact);
+    expect(result.products).toEqual([]);
+    expect(result.uncertain).toBe(true);
   });
 
   it("recovers JSON wrapped in a fence with surrounding prose", () => {
@@ -184,22 +211,19 @@ describe("parseAiExtractionJson", () => {
   });
 });
 
-describe("previewUnparseableText", () => {
-  it("returns short text unchanged", () => {
-    expect(previewUnparseableText("hello world")).toBe("hello world");
+describe("getUnparseableTextDiagnostics", () => {
+  it("reports structure without including extracted content", () => {
+    const diagnostics = getUnparseableTextDiagnostics("hello product 1.99");
+    expect(diagnostics).toContain("length=");
+    expect(diagnostics).not.toContain("hello");
+    expect(diagnostics).not.toContain("1.99");
   });
 
-  it("unwraps the gateway { text } envelope before previewing", () => {
-    const envelope = JSON.stringify({ text: "not really json" });
-    expect(previewUnparseableText(envelope)).toBe("not really json");
-  });
-
-  it("truncates long content to a bounded prefix/suffix and never throws", () => {
-    const long = "A".repeat(1000);
-    const preview = previewUnparseableText(long, 20);
-    expect(preview.length).toBeLessThan(long.length);
-    expect(preview).toContain("chars omitted");
-    expect(() => previewUnparseableText("{{{ not json at all")).not.toThrow();
+  it("identifies an unterminated Markdown JSON fence as likely truncation", () => {
+    const diagnostics = getUnparseableTextDiagnostics("```json\n{\"product_name\":\"hidden\"");
+    expect(diagnostics).toContain("startsWithFence=true");
+    expect(diagnostics).toContain("endsWithFence=false");
+    expect(diagnostics).toContain("likelyTruncated=true");
   });
 });
 
