@@ -137,7 +137,7 @@ The request body follows the vision gateway contract:
 
 `stream: false` is the correct choice for this use case because the app expects one final structured JSON document with product and price extraction, not a continuous chat stream. The server-side proxy then forwards the request to the configured gateway URL using the `AI_GATEWAY_VISION_KEY` secret and returns the server response as-is. The client accepts direct extraction JSON, OpenAI-style envelopes, and the gateway's `{ "text": "..." }` response envelope.
 
-For each vision request, `ai-proxy` writes structured Netlify logs containing the Netlify request ID, image MIME type and approximate decoded byte count, gateway status, duration, response byte count, and response shape. It never logs the image, prompt, extracted text, or API key.
+For each vision request, `ai-proxy` writes structured Netlify logs containing the Netlify request ID, image MIME type and approximate decoded byte count, gateway status, duration, response byte count, and response shape. Successful gateway responses are also validated against the extraction contract before the proxy returns `200`; a non-parseable `2xx` body becomes a diagnostic `502` with an error code. It never logs the image, prompt, extracted text, or API key.
 
 ### Netlify Functions
 

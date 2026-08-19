@@ -14,6 +14,10 @@ import {
   getVisionProviders,
   type ProviderCatalogEntry,
 } from "../../src/providerCatalog";
+import {
+  AiExtractionError,
+  parseAiExtractionJson,
+} from "../../src/aiPrompt";
 
 declare const process: { env: Record<string, string | undefined> };
 
@@ -240,6 +244,19 @@ function getGatewayResponseShape(text: string): string {
   }
 }
 
+function responseHeaders(
+  requestId: string,
+  responseShape?: string
+): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    "X-AI-Proxy-Request-Id": requestId,
+    ...(responseShape
+      ? { "X-AI-Proxy-Response-Shape": responseShape }
+      : {}),
+  };
+}
+
 async function forwardToVisionGateway(
   payload: Record<string, unknown>,
   requestId: string
@@ -258,7 +275,7 @@ async function forwardToVisionGateway(
 
   const startedAt = Date.now();
   const image = getImageMetadata(payload);
-  console.info("ai-proxy vision gateway request", {
+  console.log("ai-proxy vision gateway request", {
     requestId,
     mimeType: image.mimeType,
     imageBytes: image.bytes,
@@ -280,7 +297,7 @@ async function forwardToVisionGateway(
 
     const text = await res.text();
     const responseShape = getGatewayResponseShape(text);
-    const log = res.ok ? console.info : console.error;
+    const log = res.ok ? console.log : console.error;
     log("ai-proxy vision gateway response", {
       requestId,
       status: res.status,
@@ -288,9 +305,43 @@ async function forwardToVisionGateway(
       responseBytes: text.length,
       responseShape,
     });
+
+    if (res.ok) {
+      try {
+        parseAiExtractionJson(text);
+      } catch (err) {
+        const parseError =
+          err instanceof AiExtractionError
+            ? err
+            : new AiExtractionError(
+                "schema_mismatch",
+                "gateway response was not parseable"
+              );
+        console.error("ai-proxy vision gateway invalid response", {
+          requestId,
+          status: res.status,
+          durationMs: Date.now() - startedAt,
+          responseBytes: text.length,
+          responseShape,
+          errorCode: parseError.code,
+        });
+        return new Response(
+          JSON.stringify({
+            error: "vision_gateway_invalid_response",
+            code: parseError.code,
+            requestId,
+          }),
+          {
+            status: 502,
+            headers: responseHeaders(requestId, responseShape),
+          }
+        );
+      }
+    }
+
     return new Response(text, {
       status: res.ok ? 200 : res.status,
-      headers: { "Content-Type": "application/json" },
+      headers: responseHeaders(requestId, responseShape),
     });
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {

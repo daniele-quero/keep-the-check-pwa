@@ -318,7 +318,7 @@ describe("ai-proxy function", () => {
   it("logs safe request and response metadata for a successful vision gateway call", async () => {
     vi.stubEnv("AI_GATEWAY_VISION_URL", "https://ai-gateway-dq.netlify.app/api/vision");
     vi.stubEnv("AI_GATEWAY_VISION_KEY", "gateway-secret");
-    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const info = vi.spyOn(console, "log").mockImplementation(() => {});
     mockFetch.mockResolvedValueOnce(
       okResponse(JSON.stringify({ provider: "gateway", model: "auto:vision", text: EXTRACTION_JSON }))
     );
@@ -347,6 +347,37 @@ describe("ai-proxy function", () => {
       responseBytes: expect.any(Number),
       responseShape: "chat_response",
     });
+  });
+
+  it("returns 502 instead of 200 when the gateway body is not parseable", async () => {
+    vi.stubEnv("AI_GATEWAY_VISION_URL", "https://ai-gateway-dq.netlify.app/api/vision");
+    vi.stubEnv("AI_GATEWAY_VISION_KEY", "gateway-secret");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockFetch.mockResolvedValueOnce(
+      okResponse(JSON.stringify({ error: "model_failed", message: "no usable result" }))
+    );
+
+    const res = await handler(
+      proxyReq({
+        model: "auto:vision",
+        imageBase64: "data:image/jpeg;base64,AAAA",
+        prompt: "Leggi i prezzi",
+        mimeType: "image/jpeg",
+      })
+    );
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({
+      error: "vision_gateway_invalid_response",
+      code: "schema_mismatch",
+    });
+    expect(error).toHaveBeenCalledWith(
+      "ai-proxy vision gateway invalid response",
+      expect.objectContaining({
+        responseShape: "json",
+        errorCode: "schema_mismatch",
+      })
+    );
   });
 
   it("normalizes compact auto:vision payloads before forwarding them to the vision gateway", async () => {
