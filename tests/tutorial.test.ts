@@ -26,12 +26,6 @@ describe("renderTutorial", () => {
     expect(html).toContain("<h3>");
   });
 
-  it("renders ordered list for ordered sections", () => {
-    const html = renderTutorial("it");
-    expect(html).toContain("<ol>");
-    expect(html).toContain("</ol>");
-  });
-
   it("renders unordered list for non-ordered sections", () => {
     const html = renderTutorial("it");
     expect(html).toContain("<ul>");
@@ -196,16 +190,24 @@ describe("tutorial content — AI migration", () => {
     expect(html).toContain("fallback");
   });
 
-  it("Italian tutorial mentions privacy / endpoint configurato", () => {
+  it("Italian tutorial keeps the privacy disclaimer without AI configuration details", () => {
     const html = renderTutorial("it").toLowerCase();
     expect(html).toContain("privacy");
-    expect(html).toContain("endpoint");
+    expect(html).toContain("proxy sicuro");
+    expect(html).not.toContain("configurazione server-side ia");
+    expect(html).not.toContain("ai_gateway_vision_key");
+    expect(html).not.toContain("auto:vision");
+    expect(html).not.toContain("gateway");
   });
 
-  it("English tutorial mentions privacy / configured endpoint", () => {
+  it("English tutorial keeps the privacy disclaimer without AI configuration details", () => {
     const html = renderTutorial("en").toLowerCase();
     expect(html).toContain("privacy");
-    expect(html).toContain("endpoint");
+    expect(html).toContain("secure proxy");
+    expect(html).not.toContain("server-side ai configuration");
+    expect(html).not.toContain("ai_gateway_vision_key");
+    expect(html).not.toContain("auto:vision");
+    expect(html).not.toContain("gateway");
   });
 
   it("Italian tutorial describes the current compact AI review modal", () => {
@@ -213,7 +215,7 @@ describe("tutorial content — AI migration", () => {
     expect(html).toContain("tipo");
     expect(html).toContain("confidence");
     expect(html).toContain("quantità");
-    expect(html).toContain("proxy netlify");
+    expect(html).toContain("proxy sicuro");
     expect(html).not.toContain("configurato nelle opzioni");
     expect(html).not.toContain("con un solo click");
   });
@@ -223,8 +225,13 @@ describe("tutorial content — AI migration", () => {
     expect(html).toContain("type");
     expect(html).toContain("confidence");
     expect(html).toContain("quantity");
-    expect(html).toContain("netlify proxy");
+    expect(html).toContain("secure proxy");
     expect(html).not.toContain("configured in options");
     expect(html).not.toContain("with one click");
+  });
+
+  it("does not expose AI configuration instructions in option tooltips", () => {
+    expect(getOptionTooltips("it")["AI Analysis"]).toBeUndefined();
+    expect(getOptionTooltips("en")["AI Analysis"]).toBeUndefined();
   });
 });

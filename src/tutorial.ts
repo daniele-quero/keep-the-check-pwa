@@ -29,11 +29,11 @@ const it: TutorialContent = {
       items: [
         "Premi il pulsante SCAN (icona fotocamera) per acquisire un frame dalla fotocamera.",
         "Usa lo slider per regolare il crop verticale dell'immagine: le maschere pesca indicano la zona esclusa dalla scansione.",
-        "L'immagine ritagliata viene inviata automaticamente al gateway IA server-side, che restituisce i risultati strutturati (prodotto, prezzo, valuta, tipo e confidence).",
+        "L'immagine ritagliata viene analizzata automaticamente e restituisce risultati strutturati (prodotto, prezzo, valuta, tipo e confidence).",
         "Quando è richiesta la revisione, la modale mostra i campi AI ridimensionati: puoi modificare prodotto, prezzo, valuta e tipo, scegliere la quantità, deselezionare o eliminare le righe.",
         "Premi ✓ (Conferma) per salvare gli articoli nella lista; premi ✗ (Annulla) per scartare il risultato senza modificare la lista.",
       ],
-      note: "🔒 Privacy: l'immagine lascia il dispositivo solo quando avvii la scansione e viene inviata al proxy Netlify, che la inoltra al gateway IA configurato server-side. Le chiavi non vengono mai esposte nel browser.",
+      note: "🔒 Privacy: l'immagine lascia il dispositivo solo quando avvii la scansione e viene inviata tramite il proxy sicuro. Le chiavi non vengono mai esposte nel browser.",
     },
     {
       title: "➕ Inserimento manuale",
@@ -43,7 +43,7 @@ const it: TutorialContent = {
         "Usa i pulsanti − / + nella modale per impostare la quantità desiderata prima di confermare.",
         "Conferma con ✓ o annulla con ✗.",
       ],
-      note: "💡 L'inserimento manuale è anche il fallback quando l'IA non è disponibile (configurazione server-side assente, gateway non raggiungibile, timeout o errore di analisi): i campi manuali tornano disponibili automaticamente.",
+      note: "💡 L'inserimento manuale è il fallback automatico quando la scansione non produce un risultato utilizzabile.",
     },
     {
       title: "📋 Lista articoli",
@@ -72,21 +72,9 @@ const it: TutorialContent = {
         "Use Coupons: attiva il sistema coupon.",
         "Value: valore in denaro per guadagnare un coupon.",
         "Threshold: percentuale del valore coupon entro cui scatta l'alert di avvicinamento.",
-        "AI Analysis: l'app usa sempre il modello fisso auto:vision configurato lato server; non è presente alcuna selezione del modello nel browser.",
         "Import (📁): carica un file .yml con le configurazioni salvate.",
         "Export (↓): scarica le configurazioni attuali come file .yml.",
       ],
-    },
-    {
-      title: "🔒 Configurazione server-side IA",
-      ordered: true,
-      items: [
-        "L'app usa sempre il modello fisso auto:vision per l'analisi delle immagini.",
-        "Imposta `AI_GATEWAY_VISION_URL` e `AI_GATEWAY_VISION_KEY` in Netlify Environment Variables oppure nel file .env locale.",
-        "La chiave e il modello non vengono mai salvati nel browser: tutto il routing passa attraverso il proxy Netlify.",
-        "Durante la scansione, la UI mostra un spinner finché la risposta del gateway non torna completa.",
-      ],
-      note: "⚠️ Nessuna chiave, endpoint o modello è esposto nelle opzioni del browser. La sicurezza e la configurazione restano totalmente server-side.",
     },
   ],
 };
@@ -106,11 +94,11 @@ const en: TutorialContent = {
       items: [
         "Press the SCAN button (camera icon) to capture a frame from the camera.",
         "Use the slider to crop the image vertically: the peach masks show the excluded area.",
-        "The cropped image is automatically sent to the server-side AI gateway, which returns structured results (product, price, currency, type and confidence).",
+        "The cropped image is analyzed automatically and returns structured results (product, price, currency, type and confidence).",
         "When review is required, the modal shows compact AI fields: you can edit the product, price, currency and type, set the quantity, uncheck or delete rows.",
         "Press ✓ (Confirm) to save the items to the list; press ✗ (Cancel) to discard the result without modifying the list.",
       ],
-      note: "🔒 Privacy: the image leaves your device only when you trigger a scan and is sent to the Netlify proxy, which forwards it to the server-side AI gateway. Keys are never exposed in the browser.",
+      note: "🔒 Privacy: the image leaves your device only when you trigger a scan and is sent through the secure proxy. Keys are never exposed in the browser.",
     },
     {
       title: "➕ Manual Entry",
@@ -120,7 +108,7 @@ const en: TutorialContent = {
         "Use the − / + buttons in the modal to set the desired quantity before confirming.",
         "Confirm with ✓ or cancel with ✗.",
       ],
-      note: "💡 Manual entry is also the fallback when the AI is unavailable (missing server-side configuration, unreachable gateway, timeout or analysis error): the manual fields become available automatically.",
+      note: "💡 Manual entry is the automatic fallback when the scan does not produce a usable result.",
     },
     {
       title: "📋 Item List",
@@ -149,21 +137,9 @@ const en: TutorialContent = {
         "Use Coupons: enable the coupon system.",
         "Value: monetary value required to earn one coupon.",
         "Threshold: percentage of coupon value within which the proximity alert triggers.",
-        "AI Analysis: the app always uses the fixed auto:vision model configured on the server; there is no model picker in the browser.",
         "Import (📁): load a .yml file with saved configurations.",
         "Export (↓): download current configurations as a .yml file.",
       ],
-    },
-    {
-      title: "🔒 Server-side AI configuration",
-      ordered: true,
-      items: [
-        "The app always uses the fixed auto:vision model for image analysis.",
-        "Set `AI_GATEWAY_VISION_URL` and `AI_GATEWAY_VISION_KEY` in Netlify Environment Variables or in your local .env file.",
-        "The key and model are never stored in the browser: all routing goes through the Netlify proxy.",
-        "While scanning, the UI shows a spinner until the gateway response is complete.",
-      ],
-      note: "⚠️ No key, endpoint or model is exposed in the browser options. Security and configuration remain fully server-side.",
     },
   ],
 };
