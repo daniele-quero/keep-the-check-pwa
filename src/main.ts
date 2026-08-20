@@ -140,6 +140,11 @@ export async function initApp(): Promise<void> {
     root: document,
     prompt: IMAGE_EXTRACTION_PROMPT,
     onConfirmed: () => addModal.close(),
+    onCancelled: () => {
+      editingItemId = null;
+      addModal.close();
+    },
+    getQuantity: () => addQty,
   });
 
   function openEditModal(item: PriceItem): void {
@@ -234,6 +239,7 @@ export async function initApp(): Promise<void> {
   });
 
   uiRefs.btnAddOk.addEventListener("click", () => {
+    if (addModalController.isAiResultsVisible()) return;
     const product = uiRefs.inputProduct.value.replace(/\n/g, " ").trim();
     const priceText = uiRefs.inputPrice.value.trim().replace(",", ".");
     if (!product || !priceText) return;
@@ -259,6 +265,7 @@ export async function initApp(): Promise<void> {
   });
 
   uiRefs.btnAddCancel.addEventListener("click", () => {
+    if (addModalController.isAiResultsVisible()) return;
     editingItemId = null;
     addModal.close();
   });

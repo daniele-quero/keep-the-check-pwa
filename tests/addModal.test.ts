@@ -114,13 +114,16 @@ describe("createAddModal", () => {
     expect(document.getElementById("add-ai-status")).not.toBeNull();
     expect(document.getElementById("add-ai-results")).not.toBeNull();
     expect(document.getElementById("add-ai-rows")).not.toBeNull();
-    expect(document.getElementById("btn-ai-confirm")).not.toBeNull();
-    expect(document.getElementById("btn-ai-manual-fallback")).not.toBeNull();
+    expect(document.getElementById("btn-ai-confirm")).toBeNull();
+    expect(document.getElementById("btn-ai-manual-fallback")).toBeNull();
     expect(document.getElementById("add-product")).not.toBeNull();
     expect(document.getElementById("add-price")).not.toBeNull();
     expect(document.getElementById("add-qty-display")).not.toBeNull();
     expect(document.getElementById("add-ok")).not.toBeNull();
     expect(document.getElementById("add-cancel")).not.toBeNull();
+    expect((document.getElementById("add-manual-region") as HTMLElement).contains(
+      document.getElementById("add-qty-display")
+    )).toBe(false);
   });
 
   it("AI status and results are hidden by default", () => {
@@ -167,8 +170,10 @@ describe("AddModalController.analyzeImage", () => {
 
     const status = document.getElementById("add-ai-status") as HTMLElement;
     const results = document.getElementById("add-ai-results") as HTMLElement;
+    const manual = document.getElementById("add-manual-region") as HTMLElement;
     expect(status.hidden).toBe(true);
     expect(results.hidden).toBe(false);
+    expect(manual.hidden).toBe(true);
 
     const rows = document.querySelectorAll("#add-ai-rows .add-ai-row");
     expect(rows.length).toBe(2);
@@ -363,6 +368,7 @@ describe("AddModalController.confirmAndAdd", () => {
       addItem: (it) => added.push(it),
       root: document,
       prompt: IMAGE_EXTRACTION_PROMPT,
+      getQuantity: () => 3,
     });
 
     await ctrl.analyzeImage("X");
@@ -371,6 +377,7 @@ describe("AddModalController.confirmAndAdd", () => {
     expect(added.length).toBe(2);
     for (const item of added) {
       expect(item.source).toBe("ai");
+      expect(item.quantity).toBe(3);
       expect(item.currency).toBe("EUR");
       expect(typeof item.confidence).toBe("number");
     }
@@ -378,7 +385,7 @@ describe("AddModalController.confirmAndAdd", () => {
     expect(added[0].price).toBe(1.99);
   });
 
-  it("clicking #btn-ai-confirm triggers confirmAndAdd via constructor wiring", async () => {
+  it("clicking the old check button triggers confirmAndAdd via constructor wiring", async () => {
     createAddModal();
     const addItem = vi.fn();
     const ctrl = new AddModalController({
@@ -390,11 +397,13 @@ describe("AddModalController.confirmAndAdd", () => {
     });
     await ctrl.analyzeImage("X");
 
-    (document.getElementById("btn-ai-confirm") as HTMLButtonElement).click();
+    (document.getElementById("add-ok") as HTMLButtonElement).click();
     expect(addItem).toHaveBeenCalledTimes(2);
 
     const results = document.getElementById("add-ai-results") as HTMLElement;
+    const manual = document.getElementById("add-manual-region") as HTMLElement;
     expect(results.hidden).toBe(true);
+    expect(manual.hidden).toBe(false);
   });
 });
 
@@ -457,20 +466,23 @@ describe("AddModalController.showFallback", () => {
     expect(status.classList.contains("error")).toBe(false);
   });
 
-  it("clicking the manual fallback link hides AI region", async () => {
+  it("clicking the old X button rejects AI results without adding items", async () => {
     createAddModal();
+    const addItem = vi.fn();
     const ctrl = new AddModalController({
       sendImageToAI: vi.fn(async () => makeResult()),
       getConfig: () => defaultCfg(),
-      addItem: vi.fn(),
+      addItem,
       root: document,
       prompt: IMAGE_EXTRACTION_PROMPT,
     });
     await ctrl.analyzeImage("X");
 
-    (document.getElementById("btn-ai-manual-fallback") as HTMLButtonElement).click();
+    (document.getElementById("add-cancel") as HTMLButtonElement).click();
     const results = document.getElementById("add-ai-results") as HTMLElement;
+    const manual = document.getElementById("add-manual-region") as HTMLElement;
     expect(results.hidden).toBe(true);
+    expect(manual.hidden).toBe(false);
+    expect(addItem).not.toHaveBeenCalled();
   });
 });
-

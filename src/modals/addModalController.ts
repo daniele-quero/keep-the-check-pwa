@@ -24,7 +24,8 @@ export interface AddModalControllerDeps {
   root: ParentNode;
   prompt: string;
   onConfirmed?: () => void;
-  onFallback?: () => void;
+  onCancelled?: () => void;
+  getQuantity?: () => number;
 }
 
 export interface CollectedItem {
@@ -75,6 +76,7 @@ export function shouldOpenAddModalAfterScan(
 export class AddModalController {
   private readonly deps: AddModalControllerDeps;
   private wired = false;
+  private aiResultsVisible = false;
 
   constructor(deps: AddModalControllerDeps) {
     this.deps = deps;
@@ -93,23 +95,32 @@ export class AddModalController {
 
   private wireButtons(): void {
     if (this.wired) return;
-    const confirm = this.q<HTMLButtonElement>("#btn-ai-confirm");
-    const fallback = this.q<HTMLButtonElement>("#btn-ai-manual-fallback");
+    const confirm = this.q<HTMLButtonElement>("#add-ok");
+    const cancel = this.q<HTMLButtonElement>("#add-cancel");
     if (confirm) {
-      confirm.addEventListener("click", () => this.confirmAndAdd());
+      confirm.addEventListener("click", (event) => {
+        if (!this.aiResultsVisible) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.confirmAndAdd();
+      });
     }
-    if (fallback) {
-      fallback.addEventListener("click", () => {
-        this.showFallback("");
-        this.deps.onFallback?.();
+    if (cancel) {
+      cancel.addEventListener("click", (event) => {
+        if (!this.aiResultsVisible) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.rejectAiResults();
       });
     }
     this.wired = true;
   }
 
   reset(): void {
+    this.aiResultsVisible = false;
     const status = this.q<HTMLElement>("#add-ai-status");
     const results = this.q<HTMLElement>("#add-ai-results");
+    const manual = this.q<HTMLElement>("#add-manual-region");
     if (status) {
       status.hidden = true;
       status.classList.remove("error");
@@ -124,6 +135,7 @@ export class AddModalController {
       const productInput = results.querySelector<HTMLInputElement>("#add-ai-product");
       if (productInput) productInput.value = "";
     }
+    if (manual) manual.hidden = false;
   }
 
   async analyzeImage(imageBase64: string): Promise<AiExtractionResult | null> {
@@ -165,6 +177,7 @@ export class AddModalController {
     const results = this.require<HTMLElement>("#add-ai-results");
     const productInput = this.require<HTMLInputElement>("#add-ai-product");
     const tbody = this.require<HTMLElement>("#add-ai-rows");
+    const manual = this.q<HTMLElement>("#add-manual-region");
 
     const firstProduct = result.products[0];
     productInput.value = (firstProduct?.name ?? firstProduct?.name_raw ?? "").trim();
@@ -177,6 +190,8 @@ export class AddModalController {
     }
 
     results.hidden = false;
+    this.aiResultsVisible = true;
+    if (manual) manual.hidden = true;
     this.hideStatus();
   }
 
@@ -293,19 +308,38 @@ export class AddModalController {
         price: it.price,
         currency: it.currency,
         confidence: it.confidence,
-      });
+      }, this.deps.getQuantity?.() ?? 1);
       this.deps.addItem(priceItem);
     }
+    this.aiResultsVisible = false;
     const results = this.q<HTMLElement>("#add-ai-results");
+    const manual = this.q<HTMLElement>("#add-manual-region");
     if (results) results.hidden = true;
+    if (manual) manual.hidden = false;
     this.hideStatus();
     this.deps.onConfirmed?.();
   }
 
+  isAiResultsVisible(): boolean {
+    return this.aiResultsVisible;
+  }
+
+  private rejectAiResults(): void {
+    this.aiResultsVisible = false;
+    const results = this.q<HTMLElement>("#add-ai-results");
+    const manual = this.q<HTMLElement>("#add-manual-region");
+    if (results) results.hidden = true;
+    if (manual) manual.hidden = false;
+    this.deps.onCancelled?.();
+  }
+
   showFallback(message: string): void {
+    this.aiResultsVisible = false;
     const status = this.q<HTMLElement>("#add-ai-status");
     const results = this.q<HTMLElement>("#add-ai-results");
+    const manual = this.q<HTMLElement>("#add-manual-region");
     if (results) results.hidden = true;
+    if (manual) manual.hidden = false;
 
     if (!status) return;
     const spinner = status.querySelector<HTMLElement>(".add-ai-spinner");
