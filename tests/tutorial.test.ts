@@ -207,4 +207,24 @@ describe("tutorial content — AI migration", () => {
     expect(html).toContain("privacy");
     expect(html).toContain("endpoint");
   });
+
+  it("Italian tutorial describes the current compact AI review modal", () => {
+    const html = renderTutorial("it").toLowerCase();
+    expect(html).toContain("tipo");
+    expect(html).toContain("confidence");
+    expect(html).toContain("quantità");
+    expect(html).toContain("proxy netlify");
+    expect(html).not.toContain("configurato nelle opzioni");
+    expect(html).not.toContain("con un solo click");
+  });
+
+  it("English tutorial describes the current compact AI review modal", () => {
+    const html = renderTutorial("en").toLowerCase();
+    expect(html).toContain("type");
+    expect(html).toContain("confidence");
+    expect(html).toContain("quantity");
+    expect(html).toContain("netlify proxy");
+    expect(html).not.toContain("configured in options");
+    expect(html).not.toContain("with one click");
+  });
 });

@@ -29,11 +29,11 @@ const it: TutorialContent = {
       items: [
         "Premi il pulsante SCAN (icona fotocamera) per acquisire un frame dalla fotocamera.",
         "Usa lo slider per regolare il crop verticale dell'immagine: le maschere pesca indicano la zona esclusa dalla scansione.",
-        "L'immagine ritagliata viene inviata automaticamente all'IA configurata, che restituisce uno o più risultati strutturati (prodotto, prezzo, valuta).",
-        "Se serve revisione manuale o fallback, si apre una modale dove puoi rivedere e modificare i risultati: aggiungi, modifica o elimina righe.",
-        "Premi Conferma per salvare gli articoli nella lista; Annulla per scartare il risultato senza modificare la lista.",
+        "L'immagine ritagliata viene inviata automaticamente al gateway IA server-side, che restituisce i risultati strutturati (prodotto, prezzo, valuta, tipo e confidence).",
+        "Quando è richiesta la revisione, la modale mostra i campi AI ridimensionati: puoi modificare prodotto, prezzo, valuta e tipo, scegliere la quantità, deselezionare o eliminare le righe.",
+        "Premi ✓ (Conferma) per salvare gli articoli nella lista; premi ✗ (Annulla) per scartare il risultato senza modificare la lista.",
       ],
-      note: "🔒 Privacy: l'immagine lascia il dispositivo solo quando avvii la scansione e viene inviata esclusivamente all'endpoint IA che hai configurato nelle Opzioni (oppure al proxy se l'hai abilitato). Nessun altro server riceve l'immagine.",
+      note: "🔒 Privacy: l'immagine lascia il dispositivo solo quando avvii la scansione e viene inviata al proxy Netlify, che la inoltra al gateway IA configurato server-side. Le chiavi non vengono mai esposte nel browser.",
     },
     {
       title: "➕ Inserimento manuale",
@@ -43,7 +43,7 @@ const it: TutorialContent = {
         "Usa i pulsanti − / + nella modale per impostare la quantità desiderata prima di confermare.",
         "Conferma con ✓ o annulla con ✗.",
       ],
-      note: "💡 L'inserimento manuale è anche il fallback quando l'IA non è disponibile (chiave assente, endpoint non raggiungibile, timeout o errore di analisi): dalla modale di scansione puoi passare alla modalità manuale con un solo click.",
+      note: "💡 L'inserimento manuale è anche il fallback quando l'IA non è disponibile (configurazione server-side assente, gateway non raggiungibile, timeout o errore di analisi): i campi manuali tornano disponibili automaticamente.",
     },
     {
       title: "📋 Lista articoli",
@@ -68,7 +68,7 @@ const it: TutorialContent = {
       title: "⚙️ Opzioni",
       items: [
         "Currency: seleziona la valuta da visualizzare accanto ai prezzi.",
-        "Require Manual Confirm: se abilitato, dopo l'analisi IA si apre la modale di revisione; se disabilitato, gli articoli rilevati vengono aggiunti automaticamente alla lista.",
+        "Require Manual Confirm: se abilitato, dopo l'analisi IA si apre la modale di revisione; se disabilitato, un risultato singolo con confidence valide viene aggiunto automaticamente alla lista.",
         "Use Coupons: attiva il sistema coupon.",
         "Value: valore in denaro per guadagnare un coupon.",
         "Threshold: percentuale del valore coupon entro cui scatta l'alert di avvicinamento.",
@@ -106,11 +106,11 @@ const en: TutorialContent = {
       items: [
         "Press the SCAN button (camera icon) to capture a frame from the camera.",
         "Use the slider to crop the image vertically: the peach masks show the excluded area.",
-        "The cropped image is automatically sent to the configured AI, which returns one or more structured results (product, price, currency).",
-        "When manual review or fallback is needed, a modal opens where you can review and edit the results: add, edit or delete rows.",
-        "Press Confirm to save the items to the list; Cancel to discard the result without modifying the list.",
+        "The cropped image is automatically sent to the server-side AI gateway, which returns structured results (product, price, currency, type and confidence).",
+        "When review is required, the modal shows compact AI fields: you can edit the product, price, currency and type, set the quantity, uncheck or delete rows.",
+        "Press ✓ (Confirm) to save the items to the list; press ✗ (Cancel) to discard the result without modifying the list.",
       ],
-      note: "🔒 Privacy: the image leaves your device only when you trigger a scan and is sent exclusively to the AI endpoint you configured in Options (or to your proxy if enabled). No other server receives the image.",
+      note: "🔒 Privacy: the image leaves your device only when you trigger a scan and is sent to the Netlify proxy, which forwards it to the server-side AI gateway. Keys are never exposed in the browser.",
     },
     {
       title: "➕ Manual Entry",
@@ -120,7 +120,7 @@ const en: TutorialContent = {
         "Use the − / + buttons in the modal to set the desired quantity before confirming.",
         "Confirm with ✓ or cancel with ✗.",
       ],
-      note: "💡 Manual entry is also the fallback when the AI is unavailable (missing key, unreachable endpoint, timeout or analysis error): from the scan modal you can switch to manual mode with one click.",
+      note: "💡 Manual entry is also the fallback when the AI is unavailable (missing server-side configuration, unreachable gateway, timeout or analysis error): the manual fields become available automatically.",
     },
     {
       title: "📋 Item List",
@@ -145,7 +145,7 @@ const en: TutorialContent = {
       title: "⚙️ Options",
       items: [
         "Currency: select the currency to display next to prices.",
-        "Require Manual Confirm: when enabled, after AI analysis the review modal opens; when disabled, detected items are added to the list automatically.",
+        "Require Manual Confirm: when enabled, after AI analysis the review modal opens; when disabled, a single result with valid confidence values is added automatically to the list.",
         "Use Coupons: enable the coupon system.",
         "Value: monetary value required to earn one coupon.",
         "Threshold: percentage of coupon value within which the proximity alert triggers.",
